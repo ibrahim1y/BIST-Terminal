@@ -1,0 +1,16 @@
+# Vite & React Sistem Dosyaları
+node_modules/
+dist/
+.eslintcache
+
+# Python Sistem Dosyaları
+__pycache__/
+venv/
+*.pyc
+
+# Ortam Değişkenleri (Şifreler)
+.env
+
+# İşletim Sistemi Kalıntıları
+.DS_Store
+Thumbs.db
