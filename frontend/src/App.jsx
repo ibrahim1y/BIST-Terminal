@@ -1,6 +1,9 @@
 // React kütüphanesini içe aktarma
 import { useState, useEffect, useRef } from 'react'
 import { createChart } from 'lightweight-charts'; 
+import {PieChart, Pie,Cell, Tooltip, ResponsiveContainer, Legend} from 'recharts';
+
+const RENKLER = ['#34d399', '#3b82f6', '#f59e0b','#ec4899','#8b5cf6','#14b8a6','#f43f5e'];
 
 // Boyut Duyarlı (Responsive) ve Güvenli TradingView Bileşeni
 const TradingViewChart = ({ data }) => {
@@ -225,6 +228,15 @@ function App() {
   const toplamKarZarar = toplamPortfoyDegeri - toplamMaliyet;
   const toplamKarZararYuzde = toplamMaliyet > 0 ? (toplamKarZarar / toplamMaliyet) * 100 : 0;
 
+  //Pasta grafiği eklendi. 
+  const pastaGrafikVerisi = portfoy.map(item => {
+    const guncelVeri = hisseler.find(h => h.sembol === item.sembol);
+    const guncelFiyat = guncelVeri ? guncelVeri.fiyat : item.fiyat;
+    return {
+      name: item.sembol,
+      value: guncelFiyat * item.lot
+    };
+  }).filter(item => item.value > 0);
   // Site şablonları ve arayüzü oluşturuldu.
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans relative">
@@ -327,6 +339,38 @@ function App() {
                     </p>
                   </div>
             </div>
+
+
+            {portfoy.length > 0 && (
+              <div className="bg-slate-900 p-6 rounded-xl border border-slate-700 mb-8 h-80 flex flex-col justify-center items-center shadow-inner">
+                <h4 className="text-slate-300 font-medium mb-4 w-full text-left">Portföy Dağılımı</h4>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pastaGrafikVerisi}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={70}
+                      outerRadius={100}
+                      paddingAngle={5}
+                      dataKey="value"
+                      stroke="none"
+                    >
+                      {pastaGrafikVerisi.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={RENKLER[index % RENKLER.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      formatter={(value) => `${value.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺`}
+                      contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f8fafc', borderRadius: '0.5rem' }}
+                      itemStyle={{ color: '#e2e8f0' }}
+                    />
+                    <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ paddingTop: '20px' }}/>
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+
             
             {portfoy.length === 0 ? (
               <div className="text-center py-8 text-slate-500">Portföyünüzde hisse bulunmuyor.</div>
@@ -376,7 +420,7 @@ function App() {
             )}
           </section>
         )}
-        // İşlem geçmişi sekmesi eklendi. Kullanıcılar alım/satım geçmişlerini görebilecek.
+      
         {aktifSekme === 'gecmis' && (
           <section className="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-sm animate-fade-in">
             <h3 className="text-lg font-medium border-b border-slate-700 pb-4 mb-4">İşlem Kayıtları (Trade Logs)</h3>
