@@ -11,7 +11,7 @@ const TradingViewChart = ({ data }) => {
     if (!chartContainerRef.current || !Array.isArray(data) || data.length === 0) return;
 
     // API'den gelen verileri zorla sayıya çevirir. String veri gelme ihtimaline karşı alınan önlem.
-    //Bozul verileri filtreleyip eskiden yeniye sıralıyoruz. 
+    //Bozuk verileri filtreleyip eskiden yeniye sıralıyoruz. 
     const temizVeri = data
       .map(d => ({
         time: d.time,
@@ -97,10 +97,21 @@ function App() {
     return kayitliVeri ? JSON.parse(kayitliVeri) : [];
   });
 
+  //İşlem geçmişi özelliği eklendi. Kullanıcı işlemlerini görebilecek.
+  const [islemGecmisi, setIslemGecmisi] = useState(() => {
+    const kayitliGecmis = localStorage.getItem('bist_islem_gecmisi');
+    return kayitliGecmis ? JSON.parse(kayitliGecmis) : [];
+  });
+
   // 2. Portföy state'i her değiştiğinde hafıza otomatik güncellenir.
   useEffect(() => {
     localStorage.setItem('bist_portfoy', JSON.stringify(portfoy));
   }, [portfoy]);
+  
+  // 3. İşlem geçmişi state'i her değiştiğinde hafıza otomatik güncellenir.
+  useEffect(() => {
+    localStorage.setItem('bist_islem_gecmisi', JSON.stringify(islemGecmisi));
+  }, [islemGecmisi]);
 
   // CANLI VERİ DÖNGÜSÜ (POLLING)
   const piyasaVerileriniGetir = () => {
@@ -146,6 +157,22 @@ function App() {
     const miktar = parseInt(lotMiktari);
     if (!miktar || miktar <= 0) return alert('Lütfen geçerli bir lot miktarı girin.');
 
+
+    // Kayıt objesi 
+    const yeniIslemKaydi = {
+      id: Date.now(),
+      tarih: new Date().toLocaleString('tr-TR'),
+      tip: islemTipi,
+      sembol: seciliHisse.sembol,
+      lot: miktar,
+      fiyat: seciliHisse.fiyat,
+      lot: miktar,
+      fiyat: seciliHisse.fiyat,
+      tutar: miktar * seciliHisse.fiyat
+    };
+    setIslemGecmisi([yeniIslemKaydi, ...islemGecmisi]);
+
+    
     if (islemTipi === 'AL') {
       const mevcutHisse = portfoy.find(p => p.sembol === seciliHisse.sembol);//Portföyde zaten var mı?
       if (mevcutHisse) {
@@ -161,6 +188,9 @@ function App() {
       } else {
         setPortfoy([...portfoy, { ...seciliHisse, lot: miktar, maliyet: seciliHisse.fiyat }]);
       }
+
+      //Alım işlemlerini geçmişe kaydet
+      setIslemGecmisi([yeniIslemKaydi, ...islemGecmisi])
       alert(`${miktar} lot ${seciliHisse.sembol} başarıyla alındı!`);
     } 
     else if (islemTipi === 'SAT') {
@@ -176,6 +206,9 @@ function App() {
       } else {
         setPortfoy(portfoy.map(p => p.sembol === seciliHisse.sembol ? { ...p, lot: p.lot - miktar } : p));
       }
+
+      //Satım işlemlerini geçmişe kaydet
+      setIslemGecmisi([yeniIslemKaydi, ...islemGecmisi])
       alert(`${miktar} lot ${seciliHisse.sembol} başarıyla satıldı!`);
     }
     modalKapat();
@@ -211,6 +244,12 @@ function App() {
             className={`font-medium transition px-4 py-2 rounded-lg ${aktifSekme === 'portfoy' ? 'bg-slate-700 text-emerald-400' : 'text-slate-300 hover:text-white hover:bg-slate-800'}`}
           >
             Portföyüm ({portfoy.length})
+          </button>
+          <button
+            onClick={() => setAktifSekme('gecmis')}
+            className={`font-medium transition px-4 py-2 rounded-lg ${aktifSekme === 'gecmis' ? 'bg-slate-700 text-emerald-400' : 'text-slate-300 hover:text-white hover:bg-slate-800'}`}
+          >
+            İşlem Geçmişi
           </button>
         </div>
       </nav>
@@ -337,6 +376,49 @@ function App() {
             )}
           </section>
         )}
+        // İşlem geçmişi sekmesi eklendi. Kullanıcılar alım/satım geçmişlerini görebilecek.
+        {aktifSekme === 'gecmis' && (
+          <section className="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-sm animate-fade-in">
+            <h3 className="text-lg font-medium border-b border-slate-700 pb-4 mb-4">İşlem Kayıtları (Trade Logs)</h3>
+
+            {islemGecmisi.lenght == 0 ? (
+              <div className="text-center py-8 text-slate-500">Henüz hiçbir alım/satım yapmadınız.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-700 text-slate-400 text-sm">
+                      <th className="pb-3 pl-2">Tarih / Saat</th>
+                      <th className="pb-3 text-center">İşlem</th>
+                      <th className="pb-3">Sembol</th>
+                      <th className="pb-3 text-right">Fiyat</th>
+                      <th className="pb-3 text-right">Lot</th>
+                      <th className="pb-3 text-right pr-2">Toplam Tutar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {islemGecmisi.map((islem) => (
+                      <tr key={islem.id} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition">
+                        <td className="py-4 pl-2 text-sm text-slate-300">{islem.tarih}</td>
+                        <td className="py-4 text-center">
+                          <span className={`px-2 py-1 text-xs font-bold rounded ${islem.tip === 'AL' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
+                            {islem.tip}
+                          </span>
+                        </td>
+                        <td className="py-4 font-bold text-white">{islem.sembol}</td>
+                        <td className="py-4 text-right text-sm">{islem.fiyat.toFixed(2)} ₺</td>
+                        <td className="py-4 text-right text-sm">{islem.lot}</td>
+                        <td className="py-4 text-right pr-2 font-medium">
+                          {islem.tutar.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
       </main>
 
       {seciliHisse && (
@@ -410,5 +492,6 @@ function App() {
     </div>
   )
 }
+
 
 export default App

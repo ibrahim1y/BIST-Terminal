@@ -13,9 +13,9 @@ app.add_middleware(
 )
 
 BIST_HISSELER = [
-    "AKBNK", "ALARK", "ASELS", "ASTOR", "BIMAS", "BRSAN", "CASH",
+    "AKBNK", "ALARK", "ASELS", "ASTOR", "BIMAS", "BRSAN",
     "DOAS", "EKGYO", "ENKAI", "EREGL", "FROTO", "GARAN", "GUBRF",
-    "HEKTS", "ISCTR", "KCHOL", "KOZAA", "KOZAL", "KRDMD", "ODAS",
+    "HEKTS", "ISCTR", "KCHOL", "KRDMD", "ODAS",
     "PETKM", "PGSUS", "SAHOL", "SASA", "SISE", "TCELL", "THYAO",
     "TOASO", "TUPRS", "YKBNK"
 ]
