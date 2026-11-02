@@ -46,7 +46,7 @@ const TradingViewChart = ({ data }) => {
       },
     });
 
-    //Yeşil ve kırmızı mumları oluşturuma
+    //Yeşil ve kırmızı mumları oluşturma.
     const candlestickSeries = chart.addCandlestickSeries({
       upColor: '#34d399',
       downColor: '#f87171',
@@ -109,6 +109,19 @@ function App() {
     return kayitliGecmis ? JSON.parse(kayitliGecmis) : [];
   });
 
+  //Her hissenin en son alınan fiyatı saklanır. Sayfa yenilense de korunacak.
+  const [sonFiyatlar, setSonFiyatlar] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('bist_son_fiyatlar')) || {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('bist_son_fiyatlar', JSON.stringify(sonFiyatlar));
+  }, [sonFiyatlar]);
+
   // 2. Portföy state'i her değiştiğinde hafıza otomatik güncellenir.
   useEffect(() => {
     localStorage.setItem('bist_portfoy', JSON.stringify(portfoy));
@@ -130,6 +143,8 @@ function App() {
       .then(data => {
         if (!Array.isArray(data) || data.length === 0) throw new Error('Piyasa verisi boş geldi');
         setHisseler(data);
+        //Gelen fiyatlar sonFiyatlar state'ine işlenir.
+        setSonFiyatlar(onceki => ({ ...onceki, ...Object.fromEntries(data.map(h => [h.sembol, h.fiyat])) }));
         setPiyasaHatasi(false);
       })
       .catch(error => {
@@ -141,7 +156,6 @@ function App() {
   useEffect(() => {
     piyasaVerileriniGetir(); // İlk açılışta hemen çalıştır
     const intervalId = setInterval(() => {
-      //Verilerin 15 saniyede bir güncellenmesi sağlandı.
       piyasaVerileriniGetir(); 
     }, 15000);
     //Sayfa kapatıldığında bu saat durur. Bilgisayarın kilitlenmesi sorunu çözüldü.
@@ -243,24 +257,23 @@ function App() {
     modalKapat();
   };
 
-  //Portföy değeri otomaik olarak güncellenir.
-  const toplamPortfoyDegeri = portfoy.reduce((toplam, item) => {
-    const guncelVeri = hisseler.find(h => h.sembol === item.sembol);
-    const guncelFiyat = guncelVeri ? guncelVeri.fiyat : item.fiyat;
-    return toplam + (guncelFiyat * item.lot);
-  }, 0);
+  //Portföy değeri otomatik olarak güncellenir.
+  //Tüm hisseler en son alınan fiyatla hesaplanır; kayıt yoksa son işlem fiyatı kullanılır.
+  const sonFiyatBul = item => sonFiyatlar[item.sembol] ?? item.fiyat;
+  const fiyatEskiMi = item => piyasaHatasi || !hisseler.some(h => h.sembol === item.sembol);
+  const eskiFiyatSayisi = portfoy.filter(fiyatEskiMi).length;
+
+  const toplamPortfoyDegeri = portfoy.reduce((toplam, item) => toplam + (sonFiyatBul(item) * item.lot), 0);
 
   const toplamMaliyet = portfoy.reduce((toplam, item) => toplam + (item.maliyet * item.lot), 0);
   const toplamKarZarar = toplamPortfoyDegeri - toplamMaliyet;
   const toplamKarZararYuzde = toplamMaliyet > 0 ? (toplamKarZarar / toplamMaliyet) * 100 : 0;
 
-  //Pasta grafiği eklendi. 
+  //Pasta grafiği eklendi.
   const pastaGrafikVerisi = portfoy.map(item => {
-    const guncelVeri = hisseler.find(h => h.sembol === item.sembol);
-    const guncelFiyat = guncelVeri ? guncelVeri.fiyat : item.fiyat;
     return {
       name: item.sembol,
-      value: guncelFiyat * item.lot
+      value: sonFiyatBul(item) * item.lot
     };
   }).filter(item => item.value > 0);
   // Site şablonları ve arayüzü oluşturuldu.
@@ -357,6 +370,13 @@ function App() {
 
         {aktifSekme === 'portfoy' && (
           <section className="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-sm animate-fade-in">
+             {eskiFiyatSayisi > 0 && (
+               <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-300">
+                 {hisseler.length === 0 && !piyasaHatasi
+                   ? 'Güncel fiyatlar yükleniyor, son alınan fiyatlar gösteriliyor.'
+                   : `${eskiFiyatSayisi} hisse güncel fiyat yerine son alınan fiyatla hesaplandı.`}
+               </div>
+             )}
              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                   <div className="bg-slate-900 p-5 rounded-xl border border-slate-700 flex flex-col justify-center">
                     <p className="text-slate-400 text-sm mb-1">Toplam Portföy</p>
@@ -428,7 +448,7 @@ function App() {
                     <tbody>
                       {portfoy.map((item, index) => {
                         const guncelVeri = hisseler.find(h => h.sembol === item.sembol);
-                        const guncelFiyat = guncelVeri ? guncelVeri.fiyat : item.fiyat;
+                        const guncelFiyat = sonFiyatBul(item);
                         const karZarar = (guncelFiyat - item.maliyet) * item.lot;
                         const karZararYuzde = ((guncelFiyat - item.maliyet) / item.maliyet) * 100;
 
@@ -436,7 +456,10 @@ function App() {
                           <tr key={index} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition">
                             <td className="py-4 pl-2 font-bold text-emerald-400">{item.sembol}</td>
                             <td className="py-4 text-right">{item.maliyet.toFixed(2)} ₺</td>
-                            <td className="py-4 text-right">{guncelFiyat.toFixed(2)} ₺</td>
+                            <td className="py-4 text-right">
+                              {guncelFiyat.toFixed(2)} ₺
+                              {fiyatEskiMi(item) && <span className="ml-2 text-xs text-amber-300">son veri</span>}
+                            </td>
                             <td className="py-4 text-right text-slate-300 font-medium">{item.lot}</td>
                             <td className={`py-4 text-right font-medium ${karZarar >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                               {karZarar > 0 ? '+' : ''}{karZarar.toFixed(2)} ₺ ({karZararYuzde.toFixed(2)}%)
