@@ -1,0 +1,79 @@
+# BIST Terminal
+
+Borsa İstanbul hisselerini izlemek ve sanal alım-satım yapmak için bir web uygulaması. Gerçek emir göndermez, gerçek para kullanmaz.
+
+## Özellikler
+
+- Hisse listesi, arama ve günlük değişim
+- Son 3 ayın mum grafiği
+- Sanal alım-satım ve ağırlıklı ortalama maliyet
+- Portföy özeti, kâr/zarar ve dağılım grafiği
+- İşlem geçmişi
+- Veri alınamadığında son alınan fiyatlarla çalışma
+
+## Teknolojiler
+
+- **Frontend:** React, Vite, Tailwind CSS, Lightweight Charts, Recharts
+- **Backend:** FastAPI, yfinance
+
+## Kurulum
+
+Python 3.12 ve Node.js 24 ile denenmiştir.
+
+```bash
+git clone https://github.com/ibrahim1y/Borsa-Terminal.git
+cd Borsa-Terminal
+```
+
+### Backend
+
+```bash
+cd backend
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+macOS ve Linux'ta sanal ortamı `source venv/bin/activate` ile etkinleştirin.
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+```
+
+## Çalıştırma
+
+İki ayrı terminal gerekir.
+
+**Backend** (`backend` klasöründe, sanal ortam etkinken):
+
+```bash
+python -m uvicorn main:app --reload
+```
+
+**Frontend** (`frontend` klasöründe):
+
+```bash
+npm run dev
+```
+
+Uygulamayı [http://localhost:5173](http://localhost:5173) adresinden açın. Backend yalnızca bu adresten gelen isteklere izin verir, bu yüzden `127.0.0.1:5173` adresi çalışmaz.
+
+## API
+
+| Uç | Açıklama |
+|---|---|
+| `GET /api/hisseler` | Hisse listesi, fiyat ve günlük değişim (30 saniye önbellekli) |
+| `GET /api/grafik/{sembol}` | Hissenin son 3 aylık günlük mum verisi |
+
+## Notlar
+
+- Fiyatlar Yahoo Finance'ten alınır ve gecikmeli olabilir.
+- Portföy, işlem geçmişi ve son fiyatlar yalnızca tarayıcının `localStorage` alanında tutulur. Tarayıcı verileri silinirse bunlar da silinir.
+- Bu proje yatırım tavsiyesi vermez.
+
+## Sorun Giderme
+
+**Windows'ta `DLL load failed ... Uygulama Denetimi ilkesi bu dosyayı engelledi`:** Windows Akıllı Uygulama Denetimi, pandas gibi paketlerin dosyalarını engelleyebilir. Bu durumda backend başlamaz.
