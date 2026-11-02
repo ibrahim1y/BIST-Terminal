@@ -1,5 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+# Önbellek için threading ve time eklendi.
+import threading
+import time
 import yfinance as yf
 
 app = FastAPI()
@@ -20,8 +23,13 @@ BIST_HISSELER = [
     "TOASO", "TUPRS", "YKBNK"
 ]
 
-@app.get("/api/hisseler")
-def get_hisseler():
+# Hisse listesi için önbellek süresi ve bellekteki kayıt.
+HISSELER_CACHE_SURESI = 30  # saniye
+hisseler_cache = {"zaman": 0.0, "veri": []}
+hisseler_kilit = threading.Lock()
+
+# Yahoo'dan veri çeken kısım ayrı fonksiyona alındı.
+def hisseleri_cek():
     tickers = " ".join([f"{h}.IS" for h in BIST_HISSELER])
     data = yf.download(tickers, period="5d", progress=False)
     
@@ -51,6 +59,19 @@ def get_hisseler():
             continue
             
     return hisseler_listesi
+
+# Süre dolmadıysa önbellekten döner, boş sonuç önbelleğe alınmaz.
+@app.get("/api/hisseler")
+def get_hisseler():
+    with hisseler_kilit:
+        if hisseler_cache["veri"] and time.monotonic() - hisseler_cache["zaman"] < HISSELER_CACHE_SURESI:
+            return hisseler_cache["veri"]
+
+        veri = hisseleri_cek()
+        if veri:
+            hisseler_cache["veri"] = veri
+            hisseler_cache["zaman"] = time.monotonic()
+        return veri
 
 @app.get("/api/grafik/{sembol}")
 def get_grafik(sembol: str):
