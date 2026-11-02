@@ -404,9 +404,11 @@ function App() {
                               {karZarar > 0 ? '+' : ''}{karZarar.toFixed(2)} ₺ ({karZararYuzde.toFixed(2)}%)
                             </td>
                             <td className="py-4 text-center">
-                              <button 
+                              <button
                                 onClick={() => { setSeciliHisse(guncelVeri); setIslemTipi('SAT'); }}
-                                className="bg-slate-700 hover:bg-red-600 text-white px-3 py-1 rounded text-sm transition"
+                                disabled={!guncelVeri}
+                                title={guncelVeri ? undefined : 'Güncel fiyat alınamadı'}
+                                className="bg-slate-700 hover:bg-red-600 text-white px-3 py-1 rounded text-sm transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-700"
                               >
                                 Sat
                               </button>
