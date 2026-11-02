@@ -150,6 +150,9 @@ function App() {
     hisse.ad.toLowerCase().includes(aramaMetni.toLowerCase())
   );
 
+  // Seçilen hissenin fiyatının güncel piyasadan okunması için yeni bir değişken. Öncesinde modal açıkken değer güncellernmiyordu. 
+  const seciliFiyat = hisseler.find(h => h.sembol === seciliHisse?.sembol)?.fiyat ?? seciliHisse?.fiyat;
+
   const modalKapat = () => {
     setSeciliHisse(null);
     setLotMiktari('');
@@ -168,10 +171,9 @@ function App() {
       tip: islemTipi,
       sembol: seciliHisse.sembol,
       lot: miktar,
-      fiyat: seciliHisse.fiyat,
-      lot: miktar,
-      fiyat: seciliHisse.fiyat,
-      tutar: miktar * seciliHisse.fiyat
+      //İşlem kaydı artık onay anındaki fiyatı kullanacak.
+      fiyat: seciliFiyat,
+      tutar: miktar * seciliFiyat
     };
     
 
@@ -182,14 +184,15 @@ function App() {
         const guncelPortfoy = portfoy.map(p => {
           if (p.sembol === seciliHisse.sembol) {
             const yeniLot = p.lot + miktar;//Eski lot sayısına ekle
-            const yeniMaliyet = ((p.lot * p.maliyet) + (miktar * seciliHisse.fiyat)) / yeniLot;
+            //Ortalama maliyet onay anındaki fiyatla hesaplanır.
+            const yeniMaliyet = ((p.lot * p.maliyet) + (miktar * seciliFiyat)) / yeniLot;
             return { ...p, lot: yeniLot, maliyet: yeniMaliyet };
           }
           return p;
         });
         setPortfoy(guncelPortfoy);
-      } else {
-        setPortfoy([...portfoy, { ...seciliHisse, lot: miktar, maliyet: seciliHisse.fiyat }]);
+      } else {.
+        setPortfoy([...portfoy, { ...seciliHisse, fiyat: seciliFiyat, lot: miktar, maliyet: seciliFiyat }]);
       }
 
       //Alım işlemlerini geçmişe kaydet
@@ -475,7 +478,8 @@ function App() {
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h3 className="text-xl font-bold text-white">{seciliHisse.sembol}</h3>
-                <p className="text-sm text-slate-400">Son Fiyat: {seciliHisse.fiyat.toFixed(2)} ₺</p>
+                {/* Pencere açıkken fiyat canlı güncellenir. */}
+                <p className="text-sm text-slate-400">Son Fiyat: {seciliFiyat.toFixed(2)} ₺</p>
               </div>
               <button onClick={modalKapat} className="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
             </div>
@@ -521,7 +525,7 @@ function App() {
               <div className="flex justify-between items-center pt-2">
                 <span className="text-sm text-slate-400">Toplam Tutar:</span>
                 <span className="text-xl font-bold text-white">
-                  {lotMiktari ? (seciliHisse.fiyat * parseInt(lotMiktari)).toLocaleString('tr-TR', {minimumFractionDigits: 2}) : '0,00'} ₺
+                  {lotMiktari ? (seciliFiyat * parseInt(lotMiktari)).toLocaleString('tr-TR', {minimumFractionDigits: 2}) : '0,00'} ₺
                 </span>
               </div>
 
