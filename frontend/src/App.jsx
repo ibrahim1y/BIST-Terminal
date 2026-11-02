@@ -160,8 +160,9 @@ function App() {
   };
 
   const islemOnayla = () => {
-    const miktar = parseInt(lotMiktari);
-    if (!miktar || miktar <= 0) return alert('Lütfen geçerli bir lot miktarı girin.');
+    //Küsuratlı lotlar artık yuvarlanmayacak, doğrudan reddedilecek. 
+    const miktar = Number(lotMiktari);
+    if (!Number.isInteger(miktar) || miktar <= 0) return alert('Lot miktarı pozitif bir tam sayı olmalıdır.');
 
 
     // Kayıt objesi 
@@ -191,7 +192,7 @@ function App() {
           return p;
         });
         setPortfoy(guncelPortfoy);
-      } else {.
+      } else {
         setPortfoy([...portfoy, { ...seciliHisse, fiyat: seciliFiyat, lot: miktar, maliyet: seciliFiyat }]);
       }
 
@@ -515,6 +516,7 @@ function App() {
                 <input
                   type="number"
                   min="1"
+                  step="1"
                   value={lotMiktari}
                   onChange={(e) => setLotMiktari(e.target.value)}
                   className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500 transition"
@@ -525,7 +527,7 @@ function App() {
               <div className="flex justify-between items-center pt-2">
                 <span className="text-sm text-slate-400">Toplam Tutar:</span>
                 <span className="text-xl font-bold text-white">
-                  {lotMiktari ? (seciliFiyat * parseInt(lotMiktari)).toLocaleString('tr-TR', {minimumFractionDigits: 2}) : '0,00'} ₺
+                  {lotMiktari ? (seciliFiyat * Number(lotMiktari)).toLocaleString('tr-TR', {minimumFractionDigits: 2}) : '0,00'} ₺
                 </span>
               </div>
 
