@@ -86,12 +86,15 @@ const TradingViewChart = ({ data }) => {
 function App() {
   const [aktifSekme, setAktifSekme] = useState('piyasa'); 
   const [hisseler, setHisseler] = useState([]);
+  //Piyasa verisi alınmamasını bu state kontrol edecek.
+  const [piyasaHatasi, setPiyasaHatasi] = useState(false);
   const [aramaMetni, setAramaMetni] = useState('');
   
   const [seciliHisse, setSeciliHisse] = useState(null);
   const [islemTipi, setIslemTipi] = useState('AL');
   const [lotMiktari, setLotMiktari] = useState('');
-  const [grafikVerisi, setGrafikVerisi] = useState([]);
+  // Grafik verisi artık ait olduğu hisse ile tutulacak.
+  const [grafikSonucu, setGrafikSonucu] = useState({ sembol: null, veri: [] });
 
   // 1. Portföy başlatılırken önce localStorage kontrol edilir.
   // Eğer kayıtlı veri varsa JSON.parse ile okunur.
@@ -120,9 +123,19 @@ function App() {
   const piyasaVerileriniGetir = () => {
     //Python backend API'sinden verileri çeker.
     fetch('http://127.0.0.1:8000/api/hisseler')
-      .then(response => response.json())
-      .then(data => setHisseler(data))
-      .catch(error => console.error("Arka plan veri güncelleme hatası:", error));
+      .then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then(data => {
+        if (!Array.isArray(data) || data.length === 0) throw new Error('Piyasa verisi boş geldi');
+        setHisseler(data);
+        setPiyasaHatasi(false);
+      })
+      .catch(error => {
+        console.error("Arka plan veri güncelleme hatası:", error);
+        setPiyasaHatasi(true);
+      });
   };
 
   useEffect(() => {
@@ -137,11 +150,20 @@ function App() {
 
   useEffect(() => {
     if (seciliHisse) {
-      setGrafikVerisi([]); 
-      fetch(`http://127.0.0.1:8000/api/grafik/${seciliHisse.sembol}`)
-        .then(res => res.json())
-        .then(data => setGrafikVerisi(data))
-        .catch(() => setGrafikVerisi([]));
+      const sembol = seciliHisse.sembol;
+      let iptal = false;
+      fetch(`http://127.0.0.1:8000/api/grafik/${sembol}`)
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
+        .then(data => {
+          if (!iptal) setGrafikSonucu({ sembol, veri: Array.isArray(data) ? data : [] });
+        })
+        .catch(() => {
+          if (!iptal) setGrafikSonucu({ sembol, veri: [] });
+        });
+      return () => { iptal = true; };
     }
   }, [seciliHisse]);
 
@@ -150,7 +172,7 @@ function App() {
     hisse.ad.toLowerCase().includes(aramaMetni.toLowerCase())
   );
 
-  // Seçilen hissenin fiyatının güncel piyasadan okunması için yeni bir değişken. Öncesinde modal açıkken değer güncellernmiyordu. 
+  // Seçilen hissenin fiyatının güncel piyasadan okunması için yeni bir değişken. Öncesinde modal açıkken değer güncellenmiyordu. 
   const seciliFiyat = hisseler.find(h => h.sembol === seciliHisse?.sembol)?.fiyat ?? seciliHisse?.fiyat;
 
   const modalKapat = () => {
@@ -283,6 +305,12 @@ function App() {
                 className="bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-emerald-500 w-64"
               />
             </div>
+
+            {piyasaHatasi && hisseler.length > 0 && (
+              <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-300">
+                Veriler güncellenemedi, son alınan fiyatlar gösteriliyor.
+              </div>
+            )}
             
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
@@ -315,7 +343,13 @@ function App() {
                 </tbody>
               </table>
               {filtrelenmisHisseler.length === 0 && (
-                <div className="text-center py-8 text-slate-500">Piyasa Verileri Yükleniyor...</div>
+                <div className="text-center py-8 text-slate-500">
+                  {hisseler.length > 0
+                    ? 'Aramanızla eşleşen hisse bulunamadı.'
+                    : piyasaHatasi
+                      ? 'Piyasa verileri alınamadı. Yeniden deneniyor...'
+                      : 'Piyasa Verileri Yükleniyor...'}
+                </div>
               )}
             </div>
           </section>
@@ -486,11 +520,16 @@ function App() {
             </div>
 
             <div className="h-64 w-full bg-slate-900 rounded-lg mb-6 border border-slate-700 overflow-hidden relative">
-                {grafikVerisi.length > 0 ? (
-                    <TradingViewChart data={grafikVerisi} />
-                ) : (
+                {/* Grafik için yükleniyor ve veri yok durumları ayrıldı. */}
+                {grafikSonucu.sembol !== seciliHisse.sembol ? (
                     <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
                         Mum Grafiği Yükleniyor...
+                    </div>
+                ) : grafikSonucu.veri.length > 0 ? (
+                    <TradingViewChart data={grafikSonucu.veri} />
+                ) : (
+                    <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
+                        Grafik verisi alınamadı.
                     </div>
                 )}
             </div>
