@@ -173,7 +173,7 @@ function App() {
       fiyat: seciliHisse.fiyat,
       tutar: miktar * seciliHisse.fiyat
     };
-    setIslemGecmisi([yeniIslemKaydi, ...islemGecmisi]);
+    
 
     
     if (islemTipi === 'AL') {
@@ -425,7 +425,8 @@ function App() {
           <section className="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-sm animate-fade-in">
             <h3 className="text-lg font-medium border-b border-slate-700 pb-4 mb-4">İşlem Kayıtları (Trade Logs)</h3>
 
-            {islemGecmisi.lenght == 0 ? (
+            
+            {islemGecmisi.length === 0 ? (
               <div className="text-center py-8 text-slate-500">Henüz hiçbir alım/satım yapmadınız.</div>
             ) : (
               <div className="overflow-x-auto">
