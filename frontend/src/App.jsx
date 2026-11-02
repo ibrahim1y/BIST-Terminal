@@ -2,6 +2,18 @@
 import { useState, useEffect, useRef } from 'react'
 import { createChart } from 'lightweight-charts'; 
 import {PieChart, Pie,Cell, Tooltip, ResponsiveContainer, Legend} from 'recharts';
+//Al/sat ve kâr/zarar hesapları portfoy.js dosyasından gelir.
+import {
+  alimUygula,
+  gecerliIslemKaydi,
+  gecerliPortfoyKaydi,
+  karZararHesapla,
+  kayitliListeyiOku,
+  lotMiktariniCoz,
+  portfoyOzeti,
+  satimUygula,
+  sonFiyatBul,
+} from './portfoy';
 
 const RENKLER = ['#34d399', '#3b82f6', '#f59e0b','#ec4899','#8b5cf6','#14b8a6','#f43f5e'];
 
@@ -81,19 +93,6 @@ const TradingViewChart = ({ data }) => {
   }, [data]);
 
   return <div ref={chartContainerRef} className="w-full h-full" />;
-};
-
-//Kayıt bozuksa veya liste değilse uygulama çökmeyecek, boş liste dönecek. Geçersiz satırlar atılacak.
-const gecerliPortfoyKaydi = k => typeof k?.sembol === 'string' && [k.lot, k.maliyet, k.fiyat].every(Number.isFinite);
-const gecerliIslemKaydi = k => typeof k?.sembol === 'string' && [k.lot, k.fiyat, k.tutar].every(Number.isFinite);
-
-const kayitliListeyiOku = (anahtar, gecerliMi) => {
-  try {
-    const veri = JSON.parse(localStorage.getItem(anahtar));
-    return Array.isArray(veri) ? veri.filter(gecerliMi) : [];
-  } catch {
-    return [];
-  }
 };
 
 function App() {
@@ -206,8 +205,8 @@ function App() {
 
   const islemOnayla = () => {
     //Küsuratlı lotlar artık yuvarlanmayacak, doğrudan reddedilecek. 
-    const miktar = Number(lotMiktari);
-    if (!Number.isInteger(miktar) || miktar <= 0) return alert('Lot miktarı pozitif bir tam sayı olmalıdır.');
+    const miktar = lotMiktariniCoz(lotMiktari);
+    if (miktar === null) return alert('Lot miktarı pozitif bir tam sayı olmalıdır.');
 
 
     // Kayıt objesi 
@@ -225,39 +224,20 @@ function App() {
 
     
     if (islemTipi === 'AL') {
-      const mevcutHisse = portfoy.find(p => p.sembol === seciliHisse.sembol);//Portföyde zaten var mı?
-      if (mevcutHisse) {
-        const guncelPortfoy = portfoy.map(p => {
-          if (p.sembol === seciliHisse.sembol) {
-            const yeniLot = p.lot + miktar;//Eski lot sayısına ekle
-            //Ortalama maliyet onay anındaki fiyatla hesaplanır.
-            const yeniMaliyet = ((p.lot * p.maliyet) + (miktar * seciliFiyat)) / yeniLot;
-            return { ...p, lot: yeniLot, maliyet: yeniMaliyet };
-          }
-          return p;
-        });
-        setPortfoy(guncelPortfoy);
-      } else {
-        setPortfoy([...portfoy, { ...seciliHisse, fiyat: seciliFiyat, lot: miktar, maliyet: seciliFiyat }]);
-      }
+      //Alım hesabı alimUygula fonksiyonuna taşındı.
+      setPortfoy(alimUygula(portfoy, seciliHisse, miktar, seciliFiyat));
 
       //Alım işlemlerini geçmişe kaydet
       setIslemGecmisi([yeniIslemKaydi, ...islemGecmisi])
       alert(`${miktar} lot ${seciliHisse.sembol} başarıyla alındı!`);
     } 
     else if (islemTipi === 'SAT') {
-      const mevcutHisse = portfoy.find(p => p.sembol === seciliHisse.sembol);//Portföyde var mı?
-      if (!mevcutHisse || mevcutHisse.lot < miktar)//Yeterli lot var mı kontrolü
-       {
+      //Satım hesabı satimUygula fonksiyonuna taşındı.
+      const yeniPortfoy = satimUygula(portfoy, seciliHisse.sembol, miktar);
+      if (yeniPortfoy === null) {
         return alert('Portföyünüzde yeterli lot bulunmuyor!');
       }
-
-      //Lotların tamamı satılıyorsa portföyden çıkar, aksi takdirde lot sayısını güncelle.
-      if (mevcutHisse.lot === miktar) {
-        setPortfoy(portfoy.filter(p => p.sembol !== seciliHisse.sembol));
-      } else {
-        setPortfoy(portfoy.map(p => p.sembol === seciliHisse.sembol ? { ...p, lot: p.lot - miktar } : p));
-      }
+      setPortfoy(yeniPortfoy);
 
       //Satım işlemlerini geçmişe kaydet
       setIslemGecmisi([yeniIslemKaydi, ...islemGecmisi])
@@ -268,21 +248,17 @@ function App() {
 
   //Portföy değeri otomatik olarak güncellenir.
   //Tüm hisseler en son alınan fiyatla hesaplanır; kayıt yoksa son işlem fiyatı kullanılır.
-  const sonFiyatBul = item => sonFiyatlar[item.sembol] ?? item.fiyat;
   const fiyatEskiMi = item => piyasaHatasi || !hisseler.some(h => h.sembol === item.sembol);
   const eskiFiyatSayisi = portfoy.filter(fiyatEskiMi).length;
 
-  const toplamPortfoyDegeri = portfoy.reduce((toplam, item) => toplam + (sonFiyatBul(item) * item.lot), 0);
-
-  const toplamMaliyet = portfoy.reduce((toplam, item) => toplam + (item.maliyet * item.lot), 0);
-  const toplamKarZarar = toplamPortfoyDegeri - toplamMaliyet;
-  const toplamKarZararYuzde = toplamMaliyet > 0 ? (toplamKarZarar / toplamMaliyet) * 100 : 0;
+  //Toplamlar portfoyOzeti fonksiyonundan geliyor.
+  const { toplamPortfoyDegeri, toplamKarZarar, toplamKarZararYuzde } = portfoyOzeti(portfoy, sonFiyatlar);
 
   //Pasta grafiği eklendi.
   const pastaGrafikVerisi = portfoy.map(item => {
     return {
       name: item.sembol,
-      value: sonFiyatBul(item) * item.lot
+      value: sonFiyatBul(item, sonFiyatlar) * item.lot
     };
   }).filter(item => item.value > 0);
   // Site şablonları ve arayüzü oluşturuldu.
@@ -457,9 +433,9 @@ function App() {
                     <tbody>
                       {portfoy.map((item, index) => {
                         const guncelVeri = hisseler.find(h => h.sembol === item.sembol);
-                        const guncelFiyat = sonFiyatBul(item);
-                        const karZarar = (guncelFiyat - item.maliyet) * item.lot;
-                        const karZararYuzde = ((guncelFiyat - item.maliyet) / item.maliyet) * 100;
+                        //Satırın fiyatı ve kâr/zararı portfoy.js dosyasından gelir.
+                        const guncelFiyat = sonFiyatBul(item, sonFiyatlar);
+                        const { karZarar, karZararYuzde } = karZararHesapla(item, guncelFiyat);
 
                         return (
                           <tr key={index} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition">
