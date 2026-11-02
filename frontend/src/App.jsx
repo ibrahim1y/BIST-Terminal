@@ -83,6 +83,19 @@ const TradingViewChart = ({ data }) => {
   return <div ref={chartContainerRef} className="w-full h-full" />;
 };
 
+//Kayıt bozuksa veya liste değilse uygulama çökmeyecek, boş liste dönecek. Geçersiz satırlar atılacak.
+const gecerliPortfoyKaydi = k => typeof k?.sembol === 'string' && [k.lot, k.maliyet, k.fiyat].every(Number.isFinite);
+const gecerliIslemKaydi = k => typeof k?.sembol === 'string' && [k.lot, k.fiyat, k.tutar].every(Number.isFinite);
+
+const kayitliListeyiOku = (anahtar, gecerliMi) => {
+  try {
+    const veri = JSON.parse(localStorage.getItem(anahtar));
+    return Array.isArray(veri) ? veri.filter(gecerliMi) : [];
+  } catch {
+    return [];
+  }
+};
+
 function App() {
   const [aktifSekme, setAktifSekme] = useState('piyasa'); 
   const [hisseler, setHisseler] = useState([]);
@@ -98,16 +111,12 @@ function App() {
 
   // 1. Portföy başlatılırken önce localStorage kontrol edilir.
   // Eğer kayıtlı veri varsa JSON.parse ile okunur.
-  const [portfoy, setPortfoy] = useState(() => {
-    const kayitliVeri = localStorage.getItem('bist_portfoy');
-    return kayitliVeri ? JSON.parse(kayitliVeri) : [];
-  });
+  //Portföy kaydı güvenli şekilde okunacak.
+  const [portfoy, setPortfoy] = useState(() => kayitliListeyiOku('bist_portfoy', gecerliPortfoyKaydi));
 
   //İşlem geçmişi özelliği eklendi. Kullanıcı işlemlerini görebilecek.
-  const [islemGecmisi, setIslemGecmisi] = useState(() => {
-    const kayitliGecmis = localStorage.getItem('bist_islem_gecmisi');
-    return kayitliGecmis ? JSON.parse(kayitliGecmis) : [];
-  });
+  //İşlem geçmişi kaydı güvenli şekilde okunacak.
+  const [islemGecmisi, setIslemGecmisi] = useState(() => kayitliListeyiOku('bist_islem_gecmisi', gecerliIslemKaydi));
 
   //Her hissenin en son alınan fiyatı saklanır. Sayfa yenilense de korunacak.
   const [sonFiyatlar, setSonFiyatlar] = useState(() => {
