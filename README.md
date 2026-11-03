@@ -22,8 +22,8 @@ Borsa İstanbul hisselerini izlemek ve sanal alım-satım yapmak için bir web u
 Python 3.12 ve Node.js 24 ile denenmiştir.
 
 ```bash
-git clone https://github.com/ibrahim1y/Borsa-Terminal.git
-cd Borsa-Terminal
+git clone https://github.com/ibrahim1y/BIST-Terminal.git
+cd BIST-Terminal
 ```
 
 ### Backend
