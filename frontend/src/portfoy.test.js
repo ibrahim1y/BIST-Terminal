@@ -1,16 +1,23 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   alimUygula,
+  bakiyeHesapla,
   gecerliIslemKaydi,
+  gecerliNakitKaydi,
   gecerliPortfoyKaydi,
   gerceklesenKarZarar,
+  islemKaydi,
   karZararHesapla,
   kayitliListeyiOku,
   lotMiktariniCoz,
+  nakitHareketi,
+  paraYatir,
   portfoyOzeti,
   satimUygula,
   sonFiyatBul,
   toplamGerceklesenKarZarar,
+  tutarCoz,
+  yeterliBakiyeVarMi,
 } from './portfoy';
 
 const hisse = (sembol, lot, maliyet, fiyat = maliyet) => ({ id: 1, sembol, ad: sembol, fiyat, degisim: 0, lot, maliyet });
@@ -159,6 +166,82 @@ describe('toplamGerceklesenKarZarar', () => {
   it('alımları, eski satışları ve geçersiz değerleri atlar', () => {
     const gecmis = [{ tip: 'AL' }, { tip: 'SAT' }, { tip: 'SAT', karZarar: 'x' }, { tip: 'SAT', karZarar: null }, { tip: 'SAT', karZarar: 10 }];
     expect(toplamGerceklesenKarZarar(gecmis)).toBe(10);
+  });
+});
+
+describe('islemKaydi', () => {
+  it('kaydı verilen değerlerle oluşturur ve tutarı hesaplar', () => {
+    const kayit = islemKaydi('AL', 'A', 3, 120, new Date(1000));
+    expect(kayit).toMatchObject({ id: 1000, tip: 'AL', sembol: 'A', lot: 3, fiyat: 120, tutar: 360 });
+    expect(gecerliIslemKaydi(kayit)).toBe(true);
+  });
+});
+
+describe('tutarCoz', () => {
+  it('pozitif tutarları ve kuruşları kabul eder', () => {
+    expect(tutarCoz('1000')).toBe(1000);
+    expect(tutarCoz('10.5')).toBe(10.5);
+    expect(tutarCoz('0.01')).toBe(0.01);
+  });
+
+  it.each(['0', '-5', '', 'abc', '1.234', 'Infinity'])('%s değerini reddeder', (deger) => {
+    expect(tutarCoz(deger)).toBeNull();
+  });
+});
+
+describe('nakit hareketleri', () => {
+  it('yeni hareketi başa ekler, eski listeyi değiştirmez', () => {
+    const eski = [nakitHareketi('YATIRMA', 100, 'ilk')];
+    const sonuc = paraYatir(eski, 50);
+    expect(sonuc).toHaveLength(2);
+    expect(sonuc[0]).toMatchObject({ tip: 'YATIRMA', tutar: 50, aciklama: 'Simülasyon' });
+    expect(eski).toHaveLength(1);
+  });
+
+  it('para girişinin kaynağı değiştirilebilir', () => {
+    expect(paraYatir([], 50, 'Banka')[0].aciklama).toBe('Banka');
+  });
+
+  it('kaydı verilen zamanla oluşturur ve tutarı kuruşa yuvarlar', () => {
+    const zaman = new Date(1000);
+    expect(nakitHareketi('ALIM', -186.30000000000001, 'A', zaman)).toMatchObject({ id: 1000, tutar: -186.3 });
+  });
+
+  it('kayıtları doğrular', () => {
+    expect(gecerliNakitKaydi({ tip: 'YATIRMA', tutar: 1 })).toBe(true);
+    expect(gecerliNakitKaydi({ tip: 'YATIRMA', tutar: 'x' })).toBe(false);
+    expect(gecerliNakitKaydi({ tutar: 1 })).toBe(false);
+    expect(gecerliNakitKaydi(1)).toBe(false);
+  });
+});
+
+describe('bakiyeHesapla', () => {
+  it('boş listede sıfır döner', () => {
+    expect(bakiyeHesapla([])).toBe(0);
+  });
+
+  it('giriş ve çıkışları toplar', () => {
+    expect(bakiyeHesapla([{ tutar: 10000 }, { tutar: -3156 }, { tutar: 1300 }])).toBe(8144);
+  });
+
+  it('kayan nokta hatası bırakmaz', () => {
+    expect(bakiyeHesapla([{ tutar: 0.1 }, { tutar: 0.2 }])).toBe(0.3);
+  });
+});
+
+describe('yeterliBakiyeVarMi', () => {
+  it('bakiye tutara eşit veya büyükse kabul eder', () => {
+    expect(yeterliBakiyeVarMi(100, 100)).toBe(true);
+    expect(yeterliBakiyeVarMi(100, 99.99)).toBe(true);
+  });
+
+  it('bakiye yetersizse reddeder', () => {
+    expect(yeterliBakiyeVarMi(100, 100.01)).toBe(false);
+    expect(yeterliBakiyeVarMi(0, 1)).toBe(false);
+  });
+
+  it('kayan nokta farkı yüzünden tüm bakiyeyle alımı engellemez', () => {
+    expect(yeterliBakiyeVarMi(0.3, 0.1 + 0.2)).toBe(true);
   });
 });
 

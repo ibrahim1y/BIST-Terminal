@@ -5,16 +5,23 @@ import {PieChart, Pie,Cell, Tooltip, ResponsiveContainer, Legend} from 'recharts
 //Al/sat ve kâr/zarar hesapları portfoy.js dosyasından gelir.
 import {
   alimUygula,
+  bakiyeHesapla,
   gecerliIslemKaydi,
+  gecerliNakitKaydi,
   gecerliPortfoyKaydi,
   gerceklesenKarZarar,
+  islemKaydi,
   karZararHesapla,
   kayitliListeyiOku,
   lotMiktariniCoz,
+  nakitHareketi,
+  paraYatir,
   portfoyOzeti,
   satimUygula,
   sonFiyatBul,
   toplamGerceklesenKarZarar,
+  tutarCoz,
+  yeterliBakiyeVarMi,
 } from './portfoy';
 
 const RENKLER = ['#34d399', '#3b82f6', '#f59e0b','#ec4899','#8b5cf6','#14b8a6','#f43f5e'];
@@ -132,6 +139,15 @@ function App() {
     localStorage.setItem('bist_son_fiyatlar', JSON.stringify(sonFiyatlar));
   }, [sonFiyatlar]);
 
+  //Nakit hareketleri saklanır, bakiye bunlardan hesaplanır.
+  const [nakitHareketleri, setNakitHareketleri] = useState(() => kayitliListeyiOku('bist_nakit_hareketleri', gecerliNakitKaydi));
+  const [yatirilacakTutar, setYatirilacakTutar] = useState('');
+  const nakitBakiye = bakiyeHesapla(nakitHareketleri);
+
+  useEffect(() => {
+    localStorage.setItem('bist_nakit_hareketleri', JSON.stringify(nakitHareketleri));
+  }, [nakitHareketleri]);
+
   // 2. Portföy state'i her değiştiğinde hafıza otomatik güncellenir.
   useEffect(() => {
     localStorage.setItem('bist_portfoy', JSON.stringify(portfoy));
@@ -205,6 +221,14 @@ function App() {
     setIslemTipi('AL');
   };
 
+  //Geçici para yatırma işlemi; banka uygulaması bağlanınca kaldırılabilir.
+  const paraYatirOnayla = () => {
+    const tutar = tutarCoz(yatirilacakTutar);
+    if (tutar === null) return alert('Lütfen en fazla iki ondalıklı, pozitif bir tutar girin.');
+    setNakitHareketleri(paraYatir(nakitHareketleri, tutar));
+    setYatirilacakTutar('');
+  };
+
   const islemOnayla = () => {
     //Küsuratlı lotlar artık yuvarlanmayacak, doğrudan reddedilecek. 
     const miktar = lotMiktariniCoz(lotMiktari);
@@ -212,20 +236,18 @@ function App() {
 
 
     // Kayıt objesi 
-    const yeniIslemKaydi = {
-      id: Date.now(),
-      tarih: new Date().toLocaleString('tr-TR'),
-      tip: islemTipi,
-      sembol: seciliHisse.sembol,
-      lot: miktar,
-      //İşlem kaydı artık onay anındaki fiyatı kullanacak.
-      fiyat: seciliFiyat,
-      tutar: miktar * seciliFiyat
-    };
+    //Kayıt portfoy.js dosyasındaki islemKaydi fonksiyonuyla oluşturulur.
+    const yeniIslemKaydi = islemKaydi(islemTipi, seciliHisse.sembol, miktar, seciliFiyat);
     
 
     
     if (islemTipi === 'AL') {
+      //Bakiye yetmiyorsa alım reddedilir, yetiyorsa tutar bakiyeden düşülür.
+      if (!yeterliBakiyeVarMi(nakitBakiye, yeniIslemKaydi.tutar)) {
+        return alert(`Yetersiz bakiye. Gereken: ${yeniIslemKaydi.tutar.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺, mevcut: ${nakitBakiye.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺`);
+      }
+      setNakitHareketleri([nakitHareketi('ALIM', -yeniIslemKaydi.tutar, seciliHisse.sembol), ...nakitHareketleri]);
+
       //Alım hesabı alimUygula fonksiyonuna taşındı.
       setPortfoy(alimUygula(portfoy, seciliHisse, miktar, seciliFiyat));
 
@@ -240,6 +262,8 @@ function App() {
         return alert('Portföyünüzde yeterli lot bulunmuyor!');
       }
       setPortfoy(yeniPortfoy);
+      //Satış tutarı bakiyeye eklenir.
+      setNakitHareketleri([nakitHareketi('SATIM', yeniIslemKaydi.tutar, seciliHisse.sembol), ...nakitHareketleri]);
 
       //Satım işlemlerini geçmişe kaydet
       //Satış kaydına gerçekleşen kâr/zarar ekleniyor.
@@ -368,6 +392,35 @@ function App() {
                    : `${eskiFiyatSayisi} hisse güncel fiyat yerine son alınan fiyatla hesaplandı.`}
                </div>
              )}
+             {/*Nakit bakiye ve geçici para yatırma alanı. */}
+             <div className="mb-4 bg-slate-900 p-5 rounded-xl border border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
+               <div>
+                 <p className="text-slate-400 text-sm mb-1">Nakit Bakiye</p>
+                 <p className="text-3xl font-bold text-white">
+                   {nakitBakiye.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺
+                 </p>
+               </div>
+               <div className="flex flex-col items-stretch md:items-end gap-2">
+                 <div className="flex gap-2">
+                   <input
+                     type="number"
+                     min="0.01"
+                     step="0.01"
+                     value={yatirilacakTutar}
+                     onChange={(e) => setYatirilacakTutar(e.target.value)}
+                     placeholder="Tutar"
+                     className="flex-1 md:w-40 bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500 transition"
+                   />
+                   <button
+                     onClick={paraYatirOnayla}
+                     className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium transition"
+                   >
+                     Para Yatır
+                   </button>
+                 </div>
+                 <p className="text-xs text-slate-500">Simülasyon: gerçek para değildir.</p>
+               </div>
+             </div>
              {/*Dört kart için ızgara düzeni değişti. */}
              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
                   <div className="bg-slate-900 p-5 rounded-xl border border-slate-700 flex flex-col justify-center">
@@ -534,6 +587,37 @@ function App() {
                 </table>
               </div>
             )}
+
+            {/*Nakit hareketleri tablosu. */}
+            <h3 className="text-lg font-medium border-b border-slate-700 pb-4 mb-4 mt-8">Nakit Hareketleri</h3>
+            {nakitHareketleri.length === 0 ? (
+              <div className="text-center py-8 text-slate-500">Henüz nakit hareketi yok.</div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-700 text-slate-400 text-sm">
+                      <th className="pb-3 pl-2">Tarih / Saat</th>
+                      <th className="pb-3">Tür</th>
+                      <th className="pb-3">Açıklama</th>
+                      <th className="pb-3 text-right pr-2">Tutar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {nakitHareketleri.map((hareket) => (
+                      <tr key={hareket.id} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition">
+                        <td className="py-4 pl-2 text-sm text-slate-300">{hareket.tarih}</td>
+                        <td className="py-4 text-sm">{hareket.tip}</td>
+                        <td className="py-4 text-sm text-slate-300">{hareket.aciklama}</td>
+                        <td className={`py-4 text-right pr-2 font-medium ${hareket.tutar >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                          {hareket.tutar > 0 ? '+' : ''}{hareket.tutar.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         )}
       </main>
@@ -593,6 +677,14 @@ function App() {
                   className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500 transition"
                   placeholder="0"
                 />
+              </div>
+
+              {/*İşlem penceresinde nakit bakiye gösterilecek.*/}
+              <div className="flex justify-between items-center pt-2">
+                <span className="text-sm text-slate-400">Nakit Bakiye:</span>
+                <span className="text-sm font-medium text-slate-200">
+                  {nakitBakiye.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺
+                </span>
               </div>
 
               <div className="flex justify-between items-center pt-2">

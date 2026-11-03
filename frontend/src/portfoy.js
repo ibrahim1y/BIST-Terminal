@@ -60,9 +60,51 @@ export const karZararHesapla = (item, fiyat) => ({
 //Bir satışın gerçekleşen kâr/zararını ortalama maliyete göre hesaplayacak.
 export const gerceklesenKarZarar = (item, satisFiyati, miktar) => (satisFiyati - item.maliyet) * miktar;
 
-//Geçmişteki gerçekleşen kâr/zararları toplamı burada belirtilir; bilgisi olmayan kartlar atlanır.
+//Geçmişteki gerçekleşen kâr/zararları toplamı burada belirtilir; bilgisi olmayan kartlar a
 export const toplamGerceklesenKarZarar = (islemGecmisi) =>
   islemGecmisi.reduce((toplam, islem) => toplam + (Number.isFinite(islem.karZarar) ? islem.karZarar : 0), 0);
+
+//İşlem kaydı App.jsx'ten buraya taşındı.
+export const islemKaydi = (tip, sembol, lot, fiyat, zaman = new Date()) => ({
+  id: zaman.getTime(),
+  tarih: zaman.toLocaleString('tr-TR'),
+  tip,
+  sembol,
+  lot,
+  //İşlem kaydı artık onay anındaki fiyatı kullanacak.
+  fiyat,
+  tutar: lot * fiyat
+});
+
+//Para tutarlarını kuruşa yuvarlanıyor.
+const kurusaYuvarla = (tutar) => Math.round(tutar * 100) / 100;
+
+//Nakit hareketi kaydının geçerliliğini kontrol eder.
+export const gecerliNakitKaydi = k => typeof k?.tip === 'string' && Number.isFinite(k.tutar);
+
+//Girilen tutarı döndürür; pozitif değilse veya kuruştan küçük basamak varsa null dönmeli.
+export const tutarCoz = (metin) => {
+  const tutar = Number(metin);
+  return Number.isFinite(tutar) && tutar > 0 && kurusaYuvarla(tutar) === tutar ? tutar : null;
+};
+
+//Yeni nakit hareketi kaydı oluşturur. Para çıkışında tutar negatiftir.
+export const nakitHareketi = (tip, tutar, aciklama, zaman = new Date()) => ({
+  id: zaman.getTime(),
+  tarih: zaman.toLocaleString('tr-TR'),
+  tip,
+  tutar: kurusaYuvarla(tutar),
+  aciklama
+});
+
+//Para girişinin tek noktası. Banka uygulaması bağlanınca kaynak burada değişecek.
+export const paraYatir = (hareketler, tutar, kaynak = 'Simülasyon') => [nakitHareketi('YATIRMA', tutar, kaynak), ...hareketler];
+
+//Bakiye tek bir sayı olarak tutulmamalı, nakit hareketlerinden hesaplanmalı.
+export const bakiyeHesapla = (hareketler) => kurusaYuvarla(hareketler.reduce((toplam, h) => toplam + h.tutar, 0));
+
+//Bakiye ve tutar kontrolü.
+export const yeterliBakiyeVarMi = (bakiye, tutar) => bakiye >= kurusaYuvarla(tutar);
 
 //Portföyün toplam değerini ve kâr/zararını hesaplar.
 export const portfoyOzeti = (portfoy, sonFiyatlar) => {
