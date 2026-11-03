@@ -7,8 +7,9 @@ Borsa İstanbul hisselerini izlemek ve sanal alım-satım yapmak için bir web u
 - Hisse listesi, arama ve günlük değişim
 - Son 3 ayın mum grafiği
 - Sanal alım-satım ve ağırlıklı ortalama maliyet
-- Portföy özeti, kâr/zarar ve dağılım grafiği
-- İşlem geçmişi
+- Portföy özeti, açık ve gerçekleşen kâr/zarar, dağılım grafiği
+- Nakit bakiye ve simülasyon amaçlı para yatırma
+- İşlem geçmişi ve nakit hareketleri
 - Veri alınamadığında son alınan fiyatlarla çalışma
 
 ## Teknolojiler
@@ -61,6 +62,16 @@ npm run dev
 
 Uygulamayı [http://localhost:5173](http://localhost:5173) adresinden açın. Backend yalnızca bu adresten gelen isteklere izin verir, bu yüzden `127.0.0.1:5173` adresi çalışmaz.
 
+## Testler
+
+`frontend` klasöründe:
+
+```bash
+npm test
+```
+
+Testler al/sat, kâr/zarar ve bakiye hesaplarını kapsar.
+
 ## API
 
 | Uç | Açıklama |
@@ -71,7 +82,8 @@ Uygulamayı [http://localhost:5173](http://localhost:5173) adresinden açın. Ba
 ## Notlar
 
 - Fiyatlar Yahoo Finance'ten alınır ve gecikmeli olabilir.
-- Portföy, işlem geçmişi ve son fiyatlar yalnızca tarayıcının `localStorage` alanında tutulur. Tarayıcı verileri silinirse bunlar da silinir.
+- Portföy, işlem geçmişi, nakit hareketleri ve son fiyatlar yalnızca tarayıcının `localStorage` alanında tutulur. Tarayıcı verileri silinirse bunlar da silinir.
+- Para yatırma simülasyondur, gerçek para kullanılmaz.
 - Bu proje yatırım tavsiyesi vermez.
 
 ## Sorun Giderme

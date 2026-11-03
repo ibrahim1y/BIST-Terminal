@@ -384,7 +384,7 @@ function App() {
         )}
 
         {aktifSekme === 'portfoy' && (
-          <section className="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-sm animate-fade-in">
+          <section className="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-sm">
              {eskiFiyatSayisi > 0 && (
                <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-300">
                  {hisseler.length === 0 && !piyasaHatasi
@@ -538,7 +538,7 @@ function App() {
         )}
       
         {aktifSekme === 'gecmis' && (
-          <section className="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-sm animate-fade-in">
+          <section className="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-sm">
             <h3 className="text-lg font-medium border-b border-slate-700 pb-4 mb-4">İşlem Kayıtları (Trade Logs)</h3>
 
             
@@ -690,7 +690,7 @@ function App() {
               <div className="flex justify-between items-center pt-2">
                 <span className="text-sm text-slate-400">Toplam Tutar:</span>
                 <span className="text-xl font-bold text-white">
-                  {lotMiktari ? (seciliFiyat * Number(lotMiktari)).toLocaleString('tr-TR', {minimumFractionDigits: 2}) : '0,00'} ₺
+                  {lotMiktariniCoz(lotMiktari) ? (seciliFiyat * lotMiktariniCoz(lotMiktari)).toLocaleString('tr-TR', {minimumFractionDigits: 2}) : '0,00'} ₺
                 </span>
               </div>
 

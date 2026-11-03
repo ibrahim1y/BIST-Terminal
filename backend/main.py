@@ -53,10 +53,9 @@ def hisseleri_cek():
                     "ad": sembol,
                     "fiyat": round(son_fiyat, 2),
                     "degisim": degisim,
-                    "hacim": "Canlı"
                 })
         except Exception as e:
-            continue
+            print(f"HATA - {sembol} verisi işlenemedi: {e}")
             
     return hisseler_listesi
 
