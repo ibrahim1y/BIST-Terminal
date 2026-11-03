@@ -12,6 +12,7 @@ import {
   gerceklesenKarZarar,
   grafikSembolleri,
   islemKaydi,
+  kaydiOlmayanHisseler,
   karZararHesapla,
   kayitliListeyiOku,
   lotMiktariniCoz,
@@ -385,6 +386,8 @@ function App() {
   );
   const portfoyGrafikYukleniyor = portfoyGrafikSonucu.semboller !== portfoySembolleri || portfoyGrafikSonucu.donem !== portfoyDonemi;
   const grafikteOlmayanHisseler = veriOlmayanHisseler(portfoy, portfoyGrafikSonucu.veri);
+  //Alım kaydı olmayan lotlar için uyarı gösterilir.
+  const kayitsizHisseler = kaydiOlmayanHisseler(portfoy, islemGecmisi);
 
   // Site şablonları ve arayüzü oluşturuldu.
   return (
@@ -589,6 +592,12 @@ function App() {
                 {!portfoyGrafikYukleniyor && grafikteOlmayanHisseler.length > 0 && (
                   <p className="text-xs text-amber-300 mt-2">
                     Geçmiş verisi alınamadığı için grafiğe dahil edilmedi: {grafikteOlmayanHisseler.join(', ')}
+                  </p>
+                )}
+
+                {!portfoyGrafikYukleniyor && kayitsizHisseler.length > 0 && (
+                  <p className="text-xs text-amber-300 mt-2">
+                    Alım kaydı olmadığı için geçmişe yazılmadı, yalnızca son noktada sayıldı: {kayitsizHisseler.join(', ')}
                   </p>
                 )}
               </div>

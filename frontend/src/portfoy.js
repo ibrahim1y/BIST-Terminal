@@ -118,27 +118,32 @@ export const pastaRengi = (index) => RENKLER[index] ?? `hsl(${(index * 137.508) 
 const ISTANBUL_FARKI_MS = 3 * 60 * 60 * 1000;
 const satirBaslangici = (time) => (typeof time === 'number' ? time * 1000 : Date.parse(time));
 
-// Her tarih o tarihteki lotlarla hesaplanır. Bugünkü lotlardan başlanıp geriye gidilir, satırın bitişinden sonraki işlemler geri alınır.
-// Son satır güncel fiyatları kullanır. İlk alımdan önceki tarihler seriye girmez.
+//İşlemleri eskiden yeniye sıralar ve bir işlemi lotlara yansıtır. Lot sıfırın altına düşmez.
+const islemSirali = (islemler) => islemler.filter(islem => Number.isFinite(islem.id)).sort((a, b) => a.id - b.id);
+const islemiLotlaraYansit = (lotlar, { tip, sembol, lot }) => {
+  lotlar[sembol] = Math.max(0, (lotlar[sembol] ?? 0) + (tip === 'SAT' ? -lot : lot));
+};
+
+// Geçmiş tarihler yalnızca işlem kayıtlarındaki lotlarla hesaplanır, kaydı olmayan lot geçmişe yazılmaz.
+// Son satır bugünkü lotları ve güncel fiyatları kullanır. İlk alımdan önceki tarihler seriye girmez.
 export const portfoyDegerSerisi = (portfoy, islemler, satirlar, sonFiyatlar) => {
-  const lotlar = Object.fromEntries(portfoy.map(item => [item.sembol, item.lot]));
-  const sonIslemdenIlke = islemler.filter(islem => Number.isFinite(islem.id)).sort((a, b) => b.id - a.id);
+  const guncelLotlar = Object.fromEntries(portfoy.map(item => [item.sembol, item.lot]));
+  const siraliIslemler = islemSirali(islemler);
   const verisiOlanlar = new Set(satirlar.flatMap(satir => Object.keys(satir.fiyatlar)));
+  const kayitliLotlar = {};
   const seri = [];
   let sira = 0;
 
-  for (let i = satirlar.length - 1; i >= 0; i--) {
+  for (let i = 0; i < satirlar.length; i++) {
     const sonSatir = i === satirlar.length - 1;
+    const bitis = sonSatir ? Infinity : satirBaslangici(satirlar[i + 1].time);
 
-    if (!sonSatir) {
-      const bitis = satirBaslangici(satirlar[i + 1].time);
-      while (sira < sonIslemdenIlke.length && sonIslemdenIlke[sira].id + ISTANBUL_FARKI_MS >= bitis) {
-        const { tip, sembol, lot } = sonIslemdenIlke[sira];
-        lotlar[sembol] = (lotlar[sembol] ?? 0) + (tip === 'SAT' ? lot : -lot);
-        sira++;
-      }
+    while (sira < siraliIslemler.length && siraliIslemler[sira].id + ISTANBUL_FARKI_MS < bitis) {
+      islemiLotlaraYansit(kayitliLotlar, siraliIslemler[sira]);
+      sira++;
     }
 
+    const lotlar = sonSatir ? guncelLotlar : kayitliLotlar;
     const { time, fiyatlar } = satirlar[i];
     let toplam = 0;
     let fiyatEksik = false;
@@ -159,9 +164,15 @@ export const portfoyDegerSerisi = (portfoy, islemler, satirlar, sonFiyatlar) => 
     }
   }
 
-  seri.reverse();
   const ilkDolu = seri.findIndex(nokta => nokta.close > 0);
   return ilkDolu === -1 ? [] : seri.slice(ilkDolu);
+};
+
+//Portföydeki lotu işlem kayıtlarının toplamından fazla olan hisseleri döner.
+export const kaydiOlmayanHisseler = (portfoy, islemler) => {
+  const kayitliLotlar = {};
+  islemSirali(islemler).forEach(islem => islemiLotlaraYansit(kayitliLotlar, islem));
+  return portfoy.filter(item => item.lot > (kayitliLotlar[item.sembol] ?? 0)).map(item => item.sembol);
 };
 
 //Grafik için gereken hisseler. Satılmış hisseler de satılana kadarki değer için gerekir.
