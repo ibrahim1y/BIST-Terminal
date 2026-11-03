@@ -7,12 +7,14 @@ import {
   alimUygula,
   gecerliIslemKaydi,
   gecerliPortfoyKaydi,
+  gerceklesenKarZarar,
   karZararHesapla,
   kayitliListeyiOku,
   lotMiktariniCoz,
   portfoyOzeti,
   satimUygula,
   sonFiyatBul,
+  toplamGerceklesenKarZarar,
 } from './portfoy';
 
 const RENKLER = ['#34d399', '#3b82f6', '#f59e0b','#ec4899','#8b5cf6','#14b8a6','#f43f5e'];
@@ -240,7 +242,9 @@ function App() {
       setPortfoy(yeniPortfoy);
 
       //Satım işlemlerini geçmişe kaydet
-      setIslemGecmisi([yeniIslemKaydi, ...islemGecmisi])
+      //Satış kaydına gerçekleşen kâr/zarar ekleniyor.
+      const satilanHisse = portfoy.find(p => p.sembol === seciliHisse.sembol);
+      setIslemGecmisi([{ ...yeniIslemKaydi, karZarar: gerceklesenKarZarar(satilanHisse, seciliFiyat, miktar) }, ...islemGecmisi])
       alert(`${miktar} lot ${seciliHisse.sembol} başarıyla satıldı!`);
     }
     modalKapat();
@@ -253,6 +257,8 @@ function App() {
 
   //Toplamlar portfoyOzeti fonksiyonundan geliyor.
   const { toplamPortfoyDegeri, toplamKarZarar, toplamKarZararYuzde } = portfoyOzeti(portfoy, sonFiyatlar);
+  //Gerçekleşen kâr/zarar işlem geçmişinden hesaplanır.
+  const gerceklesenToplam = toplamGerceklesenKarZarar(islemGecmisi);
 
   //Pasta grafiği eklendi.
   const pastaGrafikVerisi = portfoy.map(item => {
@@ -362,7 +368,8 @@ function App() {
                    : `${eskiFiyatSayisi} hisse güncel fiyat yerine son alınan fiyatla hesaplandı.`}
                </div>
              )}
-             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+             {/*Dört kart için ızgara düzeni değişti. */}
+             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
                   <div className="bg-slate-900 p-5 rounded-xl border border-slate-700 flex flex-col justify-center">
                     <p className="text-slate-400 text-sm mb-1">Toplam Portföy</p>
                     <p className="text-3xl font-bold text-white">
@@ -370,15 +377,23 @@ function App() {
                     </p>
                   </div>
                   <div className="bg-slate-900 p-5 rounded-xl border border-slate-700 flex flex-col justify-center">
-                    <p className="text-slate-400 text-sm mb-1">Kâr / Zarar</p>
+                    {/*Kart başlığı açık pozisyonları belirtir. */}
+                    <p className="text-slate-400 text-sm mb-1">Açık Pozisyon Kâr / Zarar</p>
                     <p className={`text-3xl font-bold ${toplamKarZarar >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                       {toplamKarZarar > 0 ? '+' : ''}{toplamKarZarar.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺
                     </p>
                   </div>
                   <div className="bg-slate-900 p-5 rounded-xl border border-slate-700 flex flex-col justify-center">
-                    <p className="text-slate-400 text-sm mb-1">Genel Getiri</p>
+                    <p className="text-slate-400 text-sm mb-1">Açık Pozisyon Getirisi</p>
                     <p className={`text-3xl font-bold ${toplamKarZararYuzde >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                       {toplamKarZararYuzde > 0 ? '+' : ''}{toplamKarZararYuzde.toFixed(2)}%
+                    </p>
+                  </div>
+                  {/*Satışlardan oluşan gerçekleşen kâr/zarar kartı. */}
+                  <div className="bg-slate-900 p-5 rounded-xl border border-slate-700 flex flex-col justify-center">
+                    <p className="text-slate-400 text-sm mb-1">Gerçekleşen Kâr / Zarar</p>
+                    <p className={`text-3xl font-bold ${gerceklesenToplam >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {gerceklesenToplam > 0 ? '+' : ''}{gerceklesenToplam.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺
                     </p>
                   </div>
             </div>
@@ -487,6 +502,8 @@ function App() {
                       <th className="pb-3 text-right">Fiyat</th>
                       <th className="pb-3 text-right">Lot</th>
                       <th className="pb-3 text-right pr-2">Toplam Tutar</th>
+                      {/*Geçmişe gerçekleşen kâr/zarar sütunu eklendi. */}
+                      <th className="pb-3 text-right pr-2">Kâr/Zarar</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -504,6 +521,13 @@ function App() {
                         <td className="py-4 text-right pr-2 font-medium">
                           {islem.tutar.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺
                         </td>
+                        {Number.isFinite(islem.karZarar) ? (
+                          <td className={`py-4 text-right pr-2 font-medium ${islem.karZarar >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {islem.karZarar > 0 ? '+' : ''}{islem.karZarar.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺
+                          </td>
+                        ) : (
+                          <td className="py-4 text-right pr-2 font-medium text-slate-500">—</td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

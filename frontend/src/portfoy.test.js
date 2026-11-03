@@ -3,12 +3,14 @@ import {
   alimUygula,
   gecerliIslemKaydi,
   gecerliPortfoyKaydi,
+  gerceklesenKarZarar,
   karZararHesapla,
   kayitliListeyiOku,
   lotMiktariniCoz,
   portfoyOzeti,
   satimUygula,
   sonFiyatBul,
+  toplamGerceklesenKarZarar,
 } from './portfoy';
 
 const hisse = (sembol, lot, maliyet, fiyat = maliyet) => ({ id: 1, sembol, ad: sembol, fiyat, degisim: 0, lot, maliyet });
@@ -127,6 +129,36 @@ describe('portfoyOzeti', () => {
     const ozet = portfoyOzeti(portfoy, { A: 120 });
     expect(ozet.toplamPortfoyDegeri).toBe(1050);
     expect(ozet.toplamKarZarar).toBe(50);
+  });
+});
+
+describe('gerceklesenKarZarar', () => {
+  it('kârlı satışı ortalama maliyete göre hesaplar', () => {
+    expect(gerceklesenKarZarar(hisse('A', 5, 100), 120, 2)).toBe(40);
+  });
+
+  it('zararlı satışı negatif hesaplar', () => {
+    expect(gerceklesenKarZarar(hisse('A', 5, 100), 80, 3)).toBe(-60);
+  });
+
+  it('ek alım sonrası ağırlıklı ortalama maliyeti kullanır', () => {
+    const portfoy = alimUygula([hisse('A', 2, 120)], { sembol: 'A' }, 2, 150);
+    expect(gerceklesenKarZarar(portfoy[0], 145, 2)).toBe(20);
+  });
+});
+
+describe('toplamGerceklesenKarZarar', () => {
+  it('boş geçmişte sıfır döner', () => {
+    expect(toplamGerceklesenKarZarar([])).toBe(0);
+  });
+
+  it('kâr ve zararları toplar', () => {
+    expect(toplamGerceklesenKarZarar([{ karZarar: 40 }, { karZarar: -60 }, { karZarar: 5 }])).toBe(-15);
+  });
+
+  it('alımları, eski satışları ve geçersiz değerleri atlar', () => {
+    const gecmis = [{ tip: 'AL' }, { tip: 'SAT' }, { tip: 'SAT', karZarar: 'x' }, { tip: 'SAT', karZarar: null }, { tip: 'SAT', karZarar: 10 }];
+    expect(toplamGerceklesenKarZarar(gecmis)).toBe(10);
   });
 });
 

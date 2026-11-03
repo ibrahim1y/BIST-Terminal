@@ -57,6 +57,13 @@ export const karZararHesapla = (item, fiyat) => ({
   karZararYuzde: ((fiyat - item.maliyet) / item.maliyet) * 100
 });
 
+//Bir satışın gerçekleşen kâr/zararını ortalama maliyete göre hesaplayacak.
+export const gerceklesenKarZarar = (item, satisFiyati, miktar) => (satisFiyati - item.maliyet) * miktar;
+
+//Geçmişteki gerçekleşen kâr/zararları toplamı burada belirtilir; bilgisi olmayan kartlar atlanır.
+export const toplamGerceklesenKarZarar = (islemGecmisi) =>
+  islemGecmisi.reduce((toplam, islem) => toplam + (Number.isFinite(islem.karZarar) ? islem.karZarar : 0), 0);
+
 //Portföyün toplam değerini ve kâr/zararını hesaplar.
 export const portfoyOzeti = (portfoy, sonFiyatlar) => {
   const toplamPortfoyDegeri = portfoy.reduce((toplam, item) => toplam + (sonFiyatBul(item, sonFiyatlar) * item.lot), 0);
