@@ -134,14 +134,15 @@ def get_portfoy_grafik(semboller: str, donem: str = "3a"):
         if data.empty:
             return []
 
-        #Verisi olmayan hisse çıkarılır, boşluklar önceki fiyatla dolar. Grafik, tüm hisselerin verisi olan ilk tarihten başlar.
-        kapanislar = data["Close"].dropna(axis=1, how="all").ffill().dropna()
+        #Verisi olmayan hisse çıkarılır, boşluklar önceki fiyatla dolar.
+        #Yeni halka arz grafiği kısaltmasın diye yalnızca hiçbir hissenin fiyatı olmayan satırlar atılır, o tarihte fiyatı olan hisseler gönderilir.
+        kapanislar = data["Close"].dropna(axis=1, how="all").ffill().dropna(how="all")
 
         grafik_verisi = []
         for index, row in kapanislar.iterrows():
             grafik_verisi.append({
                 "time": int(index.timestamp() + index.utcoffset().total_seconds()) if gun_ici else index.strftime("%Y-%m-%d"),
-                "fiyatlar": {kolon.removesuffix(".IS"): round(float(fiyat), 2) for kolon, fiyat in row.items()}
+                "fiyatlar": {kolon.removesuffix(".IS"): round(float(fiyat), 2) for kolon, fiyat in row.dropna().items()}
             })
         return grafik_verisi
     except Exception as e:

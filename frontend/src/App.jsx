@@ -10,6 +10,7 @@ import {
   gecerliNakitKaydi,
   gecerliPortfoyKaydi,
   gerceklesenKarZarar,
+  grafikSembolleri,
   islemKaydi,
   karZararHesapla,
   kayitliListeyiOku,
@@ -41,26 +42,13 @@ const GRAFIK_DONEMLERI = [
 //Grafik türü ve saat gösterimi dışarıdan seçilir.
 const TradingViewChart = ({ data, tip, saatGoster }) => {
   const chartContainerRef = useRef();
+  //Grafik saklanır; veri değişince baştan kurulmaz, yalnızca verisi güncellenir.
+  const chartRef = useRef(null);
+  const seriRef = useRef(null);
+  const ilkZamanRef = useRef(null);
 
   useEffect(() => {
-    // Veri yoksa veya array boş ise grafiğin çökmemesi için 
-    if (!chartContainerRef.current || !Array.isArray(data) || data.length === 0) return;
-
-    // API'den gelen verileri zorla sayıya çevirir. String veri gelme ihtimaline karşı alınan önlem.
-    //Bozuk verileri filtreleyip eskiden yeniye sıralıyoruz. 
-    const temizVeri = data
-      .map(d => ({
-        time: d.time,
-        open: Number(d.open),
-        high: Number(d.high),
-        low: Number(d.low),
-        close: Number(d.close)
-      }))
-      .filter(d => !isNaN(d.open) && !isNaN(d.high) && !isNaN(d.low) && !isNaN(d.close))
-      .filter((v, i, a) => a.findIndex(t => t.time === v.time) === i)
-      .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
-
-    if (temizVeri.length === 0) return;
+    if (!chartContainerRef.current) return;
 
     //Kanvas oluşumu
     const chart = createChart(chartContainerRef.current, {
@@ -81,29 +69,22 @@ const TradingViewChart = ({ data, tip, saatGoster }) => {
       },
     });
 
-    try {
-      if (tip === 'cizgi') {
-        //Çizgi grafik kapanış fiyatlarını kullanır, dönem başına göre yeşil veya kırmızı olur.
-        const yukseliste = temizVeri[temizVeri.length - 1].close >= temizVeri[0].close;
-        const cizgiSerisi = chart.addLineSeries({ color: yukseliste ? '#34d399' : '#f87171', lineWidth: 2 });
-        cizgiSerisi.setData(temizVeri.map(d => ({ time: d.time, value: d.close })));
-      } else {
-        //Yeşil ve kırmızı mumları oluşturma.
-        const candlestickSeries = chart.addCandlestickSeries({
-          upColor: '#34d399',
-          downColor: '#f87171',
-          borderVisible: false,
-          wickUpColor: '#34d399',
-          wickDownColor: '#f87171',
-        });
-        candlestickSeries.setData(temizVeri);
-      }
-      chart.timeScale().fitContent();
-    } catch (e) {
-      console.error("TradingView Çizim Hatası:", e);
+    if (tip === 'cizgi') {
+      seriRef.current = chart.addLineSeries({ lineWidth: 2 });
+    } else {
+      //Yeşil ve kırmızı mumları oluşturma.
+      seriRef.current = chart.addCandlestickSeries({
+        upColor: '#34d399',
+        downColor: '#f87171',
+        borderVisible: false,
+        wickUpColor: '#34d399',
+        wickDownColor: '#f87171',
+      });
     }
+    chartRef.current = chart;
+    ilkZamanRef.current = null;
 
-    //Pencere boyutu değiştiğinde grafik otomatik yeniden boyutlandırılır.Grafiğin taşmaması sağlandı.
+    //Pencere boyutu değiştiğinde grafik otomatik yeniden boyutlandırılır. Grafiğin taşmaması sağlandı.
     const resizeObserver = new ResizeObserver(entries => {
       if (entries.length === 0 || entries[0].target !== chartContainerRef.current) return;
       const newRect = entries[0].contentRect;
@@ -114,11 +95,53 @@ const TradingViewChart = ({ data, tip, saatGoster }) => {
     
     resizeObserver.observe(chartContainerRef.current);
 
-    // İncele modalı kapatıldığında RAM temizlenir.
     return () => {
       resizeObserver.disconnect();
       chart.remove();
+      chartRef.current = null;
+      seriRef.current = null;
     };
+  }, [tip, saatGoster]);
+
+  //Veri değişince mevcut grafiğin verisi güncellenir.
+  useEffect(() => {
+    // Veri yoksa veya array boş ise grafiğin çökmemesi için
+    if (!seriRef.current || !Array.isArray(data) || data.length === 0) return;
+
+    // API'den gelen verileri zorla sayıya çevirir. String veri gelme ihtimaline karşı alınan önlem.
+    //Bozuk verileri filtreleyip eskiden yeniye sıralıyoruz.
+    const temizVeri = data
+      .map(d => ({
+        time: d.time,
+        open: Number(d.open),
+        high: Number(d.high),
+        low: Number(d.low),
+        close: Number(d.close)
+      }))
+      .filter(d => !isNaN(d.open) && !isNaN(d.high) && !isNaN(d.low) && !isNaN(d.close))
+      .filter((v, i, a) => a.findIndex(t => t.time === v.time) === i)
+      .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+
+    if (temizVeri.length === 0) return;
+
+    try {
+      if (tip === 'cizgi') {
+        //Çizgi grafik kapanış fiyatlarını kullanır, dönem başına göre yeşil veya kırmızı olur.
+        const yukseliste = temizVeri[temizVeri.length - 1].close >= temizVeri[0].close;
+        //Tek nokta çizgi olarak görünmediği için az veride noktalar da gösterilir.
+        seriRef.current.applyOptions({ color: yukseliste ? '#34d399' : '#f87171', pointMarkersVisible: temizVeri.length <= 2 });
+        seriRef.current.setData(temizVeri.map(d => ({ time: d.time, value: d.close })));
+      } else {
+        seriRef.current.setData(temizVeri);
+      }
+      //Her güncellemede değil, grafiğin başlangıcı değişince sığdırılır. Kullanıcının yakınlaştırması bozulmaz.
+      if (ilkZamanRef.current !== temizVeri[0].time) {
+        chartRef.current.timeScale().fitContent();
+        ilkZamanRef.current = temizVeri[0].time;
+      }
+    } catch (e) {
+      console.error("TradingView Çizim Hatası:", e);
+    }
   }, [data, tip, saatGoster]);
 
   return <div ref={chartContainerRef} className="w-full h-full" />;
@@ -184,7 +207,7 @@ function App() {
     localStorage.setItem('bist_islem_gecmisi', JSON.stringify(islemGecmisi));
   }, [islemGecmisi]);
 
-  // CANLI VERİ DÖNGÜSÜ (POLLING)
+  // VERİ GÜNCELLEME DÖNGÜSÜ (POLLING)
   const piyasaVerileriniGetir = () => {
     //Python backend API'sinden verileri çeker.
     fetch('http://127.0.0.1:8000/api/hisseler')
@@ -210,7 +233,7 @@ function App() {
     const intervalId = setInterval(() => {
       piyasaVerileriniGetir(); 
     }, 15000);
-    //Sayfa kapatıldığında bu saat durur. Bilgisayarın kilitlenmesi sorunu çözüldü.
+    //Sayfa kapatıldığında bu saat durur.
     return () => clearInterval(intervalId); // Bellek sızıntısını önle
   }, []);
 
@@ -235,26 +258,38 @@ function App() {
     }
   }, [seciliHisse, grafikDonemi]);
 
-  //Portföy sekmesi açıkken geçmiş fiyatlar çekilir. Lot değişince değil, hisse listesi veya dönem değişince yenilenir.
-  const portfoySembolleri = portfoy.map(item => item.sembol).sort().join(',');
+  //Portföy sekmesi açıkken geçmiş fiyatlar çekilir.
+  //Satılan hisseler de geçmiş değer için gerekir, bu yüzden işlem geçmişindeki hisseler de istenir.
+  const portfoySembolleri = grafikSembolleri(portfoy, islemGecmisi);
 
   useEffect(() => {
     if (aktifSekme === 'portfoy' && portfoySembolleri !== '') {
       const semboller = portfoySembolleri;
       const donem = portfoyDonemi;
       let iptal = false;
-      fetch(`http://127.0.0.1:8000/api/portfoy-grafik?semboller=${encodeURIComponent(semboller)}&donem=${donem}`)
+      //Yenileme başarısız olursa eldeki grafik silinmez.
+      const sonucuYaz = (veri) => setPortfoyGrafikSonucu(onceki => (
+        veri.length === 0 && onceki.semboller === semboller && onceki.donem === donem ? onceki : { semboller, donem, veri }
+      ));
+      const veriyiGetir = () => fetch(`http://127.0.0.1:8000/api/portfoy-grafik?semboller=${encodeURIComponent(semboller)}&donem=${donem}`)
         .then(res => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return res.json();
         })
         .then(data => {
-          if (!iptal) setPortfoyGrafikSonucu({ semboller, donem, veri: Array.isArray(data) ? data : [] });
+          if (!iptal) sonucuYaz(Array.isArray(data) ? data : []);
         })
         .catch(() => {
-          if (!iptal) setPortfoyGrafikSonucu({ semboller, donem, veri: [] });
+          if (!iptal) sonucuYaz([]);
         });
-      return () => { iptal = true; };
+
+      veriyiGetir();
+      //Yeni mumlar grafiğe eklensin diye geçmiş veri dakikada bir yenilenir.
+      const intervalId = setInterval(veriyiGetir, 60000);
+      return () => {
+        iptal = true;
+        clearInterval(intervalId);
+      };
     }
   }, [aktifSekme, portfoySembolleri, portfoyDonemi]);
 
@@ -343,10 +378,10 @@ function App() {
     };
   }).filter(item => item.value > 0);
 
-  // Grafik yalnızca veri veya portföy değişince yeniden çizilsin diye seriyi saklıyoruz.
+  //Seri işlem geçmişi ve güncel fiyatlarla da yenilenir, son nokta güncel değeri gösterir.
   const portfoyGrafikSerisi = useMemo(
-    () => portfoyDegerSerisi(portfoy, portfoyGrafikSonucu.veri),
-    [portfoy, portfoyGrafikSonucu.veri]
+    () => portfoyDegerSerisi(portfoy, islemGecmisi, portfoyGrafikSonucu.veri, sonFiyatlar),
+    [portfoy, islemGecmisi, portfoyGrafikSonucu.veri, sonFiyatlar]
   );
   const portfoyGrafikYukleniyor = portfoyGrafikSonucu.semboller !== portfoySembolleri || portfoyGrafikSonucu.donem !== portfoyDonemi;
   const grafikteOlmayanHisseler = veriOlmayanHisseler(portfoy, portfoyGrafikSonucu.veri);
@@ -513,12 +548,12 @@ function App() {
 
 
             {/*Portföy çizgi grafiği. */}
-            {portfoy.length > 0 && (
+            {portfoySembolleri !== '' && (
               <div className="bg-slate-900 p-6 rounded-xl border border-slate-700 mb-8 shadow-inner">
                 <div className="flex flex-wrap justify-between items-start gap-2 mb-4">
                   <div>
-                    <h4 className="text-slate-300 font-medium">Mevcut Hisselerin Geçmiş Performansı</h4>
-                    <p className="text-xs text-slate-500 mt-1">Bugünkü lotlarla hesaplanır, gerçek işlem geçmişini göstermez.</p>
+                    <h4 className="text-slate-300 font-medium">Portföy Değeri</h4>
+                    <p className="text-xs text-slate-500 mt-1">Her tarih o tarihteki lotlarla hesaplanır. Alım ve satımlar yapıldığı andan itibaren yansır.</p>
                   </div>
                   <div className="flex gap-1">
                     {GRAFIK_DONEMLERI.map((secenek) => (
@@ -546,7 +581,7 @@ function App() {
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
-                      Grafik verisi alınamadı.
+                      {portfoyGrafikSonucu.veri.length > 0 ? 'Bu dönemde portföyde hisse yok.' : 'Grafik verisi alınamadı.'}
                     </div>
                   )}
                 </div>
@@ -583,7 +618,7 @@ function App() {
                       contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f8fafc', borderRadius: '0.5rem' }}
                       itemStyle={{ color: '#e2e8f0' }}
                     />
-                    <Legend verticalAlign="bottom" height={pastaGrafikVerisi.length > 10 ? 90 : 36} iconType="circle" wrapperStyle={{ paddingTop: '20px', overflowY: 'auto' }}/>
+                    <Legend verticalAlign="bottom" height={pastaGrafikVerisi.length > 10 ? 90 : 36} iconType="circle" wrapperStyle={{ paddingTop: '20px', overflowY: pastaGrafikVerisi.length > 10 ? 'auto' : 'visible' }}/>
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -736,7 +771,7 @@ function App() {
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h3 className="text-xl font-bold text-white">{seciliHisse.sembol}</h3>
-                {/* Pencere açıkken fiyat canlı güncellenir. */}
+                {/* Pencere açıkken fiyat güncellenir. */}
                 <p className="text-sm text-slate-400">Son Fiyat: {seciliFiyat.toFixed(2)} ₺</p>
               </div>
               <button onClick={modalKapat} className="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>

@@ -60,7 +60,7 @@ export const karZararHesapla = (item, fiyat) => ({
 //Bir satışın gerçekleşen kâr/zararını ortalama maliyete göre hesaplayacak.
 export const gerceklesenKarZarar = (item, satisFiyati, miktar) => (satisFiyati - item.maliyet) * miktar;
 
-//Geçmişteki gerçekleşen kâr/zararları toplamı burada belirtilir; bilgisi olmayan kayıtlar atlanır.
+//Geçmişteki gerçekleşen kâr/zararları toplar; bilgisi olmayan kayıtlar atlanır.
 export const toplamGerceklesenKarZarar = (islemGecmisi) =>
   islemGecmisi.reduce((toplam, islem) => toplam + (Number.isFinite(islem.karZarar) ? islem.karZarar : 0), 0);
 
@@ -71,12 +71,11 @@ export const islemKaydi = (tip, sembol, lot, fiyat, zaman = new Date()) => ({
   tip,
   sembol,
   lot,
-  //İşlem kaydı artık onay anındaki fiyatı kullanacak.
   fiyat,
   tutar: lot * fiyat
 });
 
-//Para tutarlarını kuruşa yuvarlanıyor.
+//Para tutarlarını kuruşa yuvarlar.
 const kurusaYuvarla = (tutar) => Math.round(tutar * 100) / 100;
 
 //Nakit hareketi kaydının geçerliliğini kontrol eder.
@@ -115,16 +114,65 @@ const RENKLER = [
 //Her ihtimale karşı gerektiğinde yeni renk üretimi için. Renkler başa dönüp aynı renkler gelmesin diye.
 export const pastaRengi = (index) => RENKLER[index] ?? `hsl(${(index * 137.508) % 360}, 70%, 55%)`;
 
-//Geçmiş fiyatları bugünkü lotlarla çarpıp portföy değerinin zaman serisini oluşturur.
-export const portfoyDegerSerisi = (portfoy, satirlar) => satirlar.map(({ time, fiyatlar }) => {
-  const deger = kurusaYuvarla(portfoy.reduce((toplam, item) => toplam + ((fiyatlar[item.sembol] ?? 0) * item.lot), 0));
-  return { time, open: deger, high: deger, low: deger, close: deger };
-});
+//Satır zamanları İstanbul saatine göre gelir, işlem zamanları da aynı saate çevrilerek karşılaştırılır.
+const ISTANBUL_FARKI_MS = 3 * 60 * 60 * 1000;
+const satirBaslangici = (time) => (typeof time === 'number' ? time * 1000 : Date.parse(time));
+
+// Her tarih o tarihteki lotlarla hesaplanır. Bugünkü lotlardan başlanıp geriye gidilir, satırın bitişinden sonraki işlemler geri alınır.
+// Son satır güncel fiyatları kullanır. İlk alımdan önceki tarihler seriye girmez.
+export const portfoyDegerSerisi = (portfoy, islemler, satirlar, sonFiyatlar) => {
+  const lotlar = Object.fromEntries(portfoy.map(item => [item.sembol, item.lot]));
+  const sonIslemdenIlke = islemler.filter(islem => Number.isFinite(islem.id)).sort((a, b) => b.id - a.id);
+  const verisiOlanlar = new Set(satirlar.flatMap(satir => Object.keys(satir.fiyatlar)));
+  const seri = [];
+  let sira = 0;
+
+  for (let i = satirlar.length - 1; i >= 0; i--) {
+    const sonSatir = i === satirlar.length - 1;
+
+    if (!sonSatir) {
+      const bitis = satirBaslangici(satirlar[i + 1].time);
+      while (sira < sonIslemdenIlke.length && sonIslemdenIlke[sira].id + ISTANBUL_FARKI_MS >= bitis) {
+        const { tip, sembol, lot } = sonIslemdenIlke[sira];
+        lotlar[sembol] = (lotlar[sembol] ?? 0) + (tip === 'SAT' ? lot : -lot);
+        sira++;
+      }
+    }
+
+    const { time, fiyatlar } = satirlar[i];
+    let toplam = 0;
+    let fiyatEksik = false;
+
+    for (const [sembol, lot] of Object.entries(lotlar)) {
+      if (lot <= 0 || !verisiOlanlar.has(sembol)) continue;
+      const fiyat = sonSatir ? (sonFiyatlar[sembol] ?? fiyatlar[sembol]) : fiyatlar[sembol];
+      if (fiyat === undefined) {
+        fiyatEksik = true;
+        break;
+      }
+      toplam += fiyat * lot;
+    }
+
+    if (!fiyatEksik) {
+      const deger = kurusaYuvarla(toplam);
+      seri.push({ time, open: deger, high: deger, low: deger, close: deger });
+    }
+  }
+
+  seri.reverse();
+  const ilkDolu = seri.findIndex(nokta => nokta.close > 0);
+  return ilkDolu === -1 ? [] : seri.slice(ilkDolu);
+};
+
+//Grafik için gereken hisseler. Satılmış hisseler de satılana kadarki değer için gerekir.
+export const grafikSembolleri = (portfoy, islemler) =>
+  [...new Set([...portfoy, ...islemler].map(kayit => kayit.sembol))].sort().join(',');
 
 //Geçmiş verisi gelmeyen hisselerin sembollerini döndürür.
 export const veriOlmayanHisseler = (portfoy, satirlar) => {
   if (satirlar.length === 0) return [];
-  return portfoy.map(item => item.sembol).filter(sembol => satirlar[0].fiyatlar[sembol] === undefined);
+  //Yeni halka arz ilk satırlarda olmayabilir, bu yüzden tüm satırlara bakılır.
+  return portfoy.map(item => item.sembol).filter(sembol => !satirlar.some(satir => satir.fiyatlar[sembol] !== undefined));
 };
 
 //Portföyün toplam değerini ve kâr/zararını hesaplar.
