@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 # Önbellek için threading ve time eklendi.
 import threading
@@ -78,16 +78,34 @@ def get_hisseler():
             hisseler_cache["zaman"] = time.monotonic()
         return veri
 
+# Her dönem için yfinance'den istenecek aralık ve mum sıklığı.
+GRAFIK_DONEMLERI = {
+    "1g": ("1d", "5m"),
+    "1h": ("5d", "30m"),
+    "1a": ("1mo", "1d"),
+    "3a": ("3mo", "1d"),
+    "1y": ("1y", "1d"),
+    "5y": ("5y", "1wk"),
+}
+
 @app.get("/api/grafik/{sembol}")
-def get_grafik(sembol: str):
+def get_grafik(sembol: str, donem: str = "3a"):
+    #Tanımsız dönem reddedilir.
+    if donem not in GRAFIK_DONEMLERI:
+        raise HTTPException(status_code=400, detail="Geçersiz dönem")
+
+    aralik, siklik = GRAFIK_DONEMLERI[donem]
+    gun_ici = siklik.endswith("m")
+
     try:
         ticker = yf.Ticker(f"{sembol}.IS")
-        hist = ticker.history(period="3mo").dropna() 
-        
+        hist = ticker.history(period=aralik, interval=siklik).dropna()
+
         grafik_verisi = []
         for index, row in hist.iterrows():
             grafik_verisi.append({
-                "time": index.strftime("%Y-%m-%d"),
+                #Gün içi veride saat, grafikte İstanbul saatini kullan.
+                "time": int(index.timestamp() + index.utcoffset().total_seconds()) if gun_ici else index.strftime("%Y-%m-%d"),
                 "open": round(float(row['Open']), 2),
                 "high": round(float(row['High']), 2),
                 "low": round(float(row['Low']), 2),
@@ -96,4 +114,36 @@ def get_grafik(sembol: str):
         return grafik_verisi
     except Exception as e:
         print(f"HATA - {sembol} grafiği çekilemedi: {e}")
+        return []
+
+#Portföy grafiği için birden çok hissenin kapanış fiyatlarını tek istekte döner.
+@app.get("/api/portfoy-grafik")
+def get_portfoy_grafik(semboller: str, donem: str = "3a"):
+    if donem not in GRAFIK_DONEMLERI:
+        raise HTTPException(status_code=400, detail="Geçersiz dönem")
+
+    liste = list(dict.fromkeys(s.strip().upper() for s in semboller.split(",") if s.strip()))
+    if not liste or len(liste) > 200 or not all(s.isascii() and s.isalnum() for s in liste):
+        raise HTTPException(status_code=400, detail="Geçersiz hisse listesi")
+
+    aralik, siklik = GRAFIK_DONEMLERI[donem]
+    gun_ici = siklik.endswith("m")
+
+    try:
+        data = yf.download(" ".join(f"{s}.IS" for s in liste), period=aralik, interval=siklik, progress=False)
+        if data.empty:
+            return []
+
+        #Verisi olmayan hisse çıkarılır, boşluklar önceki fiyatla dolar. Grafik, tüm hisselerin verisi olan ilk tarihten başlar.
+        kapanislar = data["Close"].dropna(axis=1, how="all").ffill().dropna()
+
+        grafik_verisi = []
+        for index, row in kapanislar.iterrows():
+            grafik_verisi.append({
+                "time": int(index.timestamp() + index.utcoffset().total_seconds()) if gun_ici else index.strftime("%Y-%m-%d"),
+                "fiyatlar": {kolon.removesuffix(".IS"): round(float(fiyat), 2) for kolon, fiyat in row.items()}
+            })
+        return grafik_verisi
+    except Exception as e:
+        print(f"HATA - portföy grafiği çekilemedi: {e}")
         return []

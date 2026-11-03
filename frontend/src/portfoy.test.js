@@ -12,11 +12,14 @@ import {
   lotMiktariniCoz,
   nakitHareketi,
   paraYatir,
+  pastaRengi,
+  portfoyDegerSerisi,
   portfoyOzeti,
   satimUygula,
   sonFiyatBul,
   toplamGerceklesenKarZarar,
   tutarCoz,
+  veriOlmayanHisseler,
   yeterliBakiyeVarMi,
 } from './portfoy';
 
@@ -242,6 +245,71 @@ describe('yeterliBakiyeVarMi', () => {
 
   it('kayan nokta farkı yüzünden tüm bakiyeyle alımı engellemez', () => {
     expect(yeterliBakiyeVarMi(0.3, 0.1 + 0.2)).toBe(true);
+  });
+});
+
+describe('pastaRengi', () => {
+  it('100 hisse için de her rengi farklı verir', () => {
+    const renkler = Array.from({ length: 100 }, (_, i) => pastaRengi(i));
+    expect(new Set(renkler).size).toBe(100);
+  });
+
+  it('aynı sıraya her zaman aynı rengi verir', () => {
+    expect(pastaRengi(3)).toBe(pastaRengi(3));
+    expect(pastaRengi(50)).toBe(pastaRengi(50));
+  });
+});
+
+describe('portfoyDegerSerisi', () => {
+  const portfoy = [hisse('A', 5, 100), hisse('B', 2, 50)];
+
+  it('her tarih için fiyatları bugünkü lotlarla çarpıp toplar', () => {
+    const satirlar = [
+      { time: '2026-01-01', fiyatlar: { A: 10, B: 20 } },
+      { time: '2026-01-02', fiyatlar: { A: 12, B: 25 } },
+    ];
+    expect(portfoyDegerSerisi(portfoy, satirlar).map(s => [s.time, s.close])).toEqual([
+      ['2026-01-01', 90],
+      ['2026-01-02', 110],
+    ]);
+  });
+
+  it('grafik bileşeninin beklediği alanların hepsini doldurur', () => {
+    expect(portfoyDegerSerisi(portfoy, [{ time: 1000, fiyatlar: { A: 10, B: 20 } }])[0]).toEqual({
+      time: 1000,
+      open: 90,
+      high: 90,
+      low: 90,
+      close: 90,
+    });
+  });
+
+  it('verisi olmayan hisseyi toplama katmaz', () => {
+    expect(portfoyDegerSerisi(portfoy, [{ time: 1, fiyatlar: { A: 10 } }])[0].close).toBe(50);
+  });
+
+  it('değeri kuruşa yuvarlar', () => {
+    expect(portfoyDegerSerisi([hisse('A', 3, 1)], [{ time: 1, fiyatlar: { A: 0.1 } }])[0].close).toBe(0.3);
+  });
+
+  it('boş veride boş seri döner', () => {
+    expect(portfoyDegerSerisi(portfoy, [])).toEqual([]);
+  });
+});
+
+describe('veriOlmayanHisseler', () => {
+  const portfoy = [hisse('A', 5, 100), hisse('B', 2, 50)];
+
+  it('verisi gelmeyen sembolleri döner', () => {
+    expect(veriOlmayanHisseler(portfoy, [{ time: 1, fiyatlar: { A: 10 } }])).toEqual(['B']);
+  });
+
+  it('hepsinin verisi varsa boş döner', () => {
+    expect(veriOlmayanHisseler(portfoy, [{ time: 1, fiyatlar: { A: 10, B: 20 } }])).toEqual([]);
+  });
+
+  it('hiç veri yoksa boş döner', () => {
+    expect(veriOlmayanHisseler(portfoy, [])).toEqual([]);
   });
 });
 

@@ -1,5 +1,5 @@
 // React kütüphanesini içe aktarma
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { createChart } from 'lightweight-charts'; 
 import {PieChart, Pie,Cell, Tooltip, ResponsiveContainer, Legend} from 'recharts';
 //Al/sat ve kâr/zarar hesapları portfoy.js dosyasından gelir.
@@ -16,18 +16,30 @@ import {
   lotMiktariniCoz,
   nakitHareketi,
   paraYatir,
+  pastaRengi,
+  portfoyDegerSerisi,
   portfoyOzeti,
   satimUygula,
   sonFiyatBul,
   toplamGerceklesenKarZarar,
   tutarCoz,
+  veriOlmayanHisseler,
   yeterliBakiyeVarMi,
 } from './portfoy';
 
-const RENKLER = ['#34d399', '#3b82f6', '#f59e0b','#ec4899','#8b5cf6','#14b8a6','#f43f5e'];
+// Grafikte dönem seçimi eklendi.
+const GRAFIK_DONEMLERI = [
+  { kod: '1g', ad: '1G', gunIci: true },
+  { kod: '1h', ad: '1H', gunIci: true },
+  { kod: '1a', ad: '1A', gunIci: false },
+  { kod: '3a', ad: '3A', gunIci: false },
+  { kod: '1y', ad: '1Y', gunIci: false },
+  { kod: '5y', ad: '5Y', gunIci: false },
+];
 
-// Boyut Duyarlı (Responsive) ve Güvenli TradingView Bileşeni
-const TradingViewChart = ({ data }) => {
+//Boyut Duyarlı (Responsive) ve Güvenli TradingView Bileşeni
+//Grafik türü ve saat gösterimi dışarıdan seçilir.
+const TradingViewChart = ({ data, tip, saatGoster }) => {
   const chartContainerRef = useRef();
 
   useEffect(() => {
@@ -64,20 +76,28 @@ const TradingViewChart = ({ data }) => {
       height: chartContainerRef.current.clientHeight || 250,
       timeScale: {
         borderColor: '#475569',
+        timeVisible: saatGoster,
+        secondsVisible: false,
       },
     });
 
-    //Yeşil ve kırmızı mumları oluşturma.
-    const candlestickSeries = chart.addCandlestickSeries({
-      upColor: '#34d399',
-      downColor: '#f87171',
-      borderVisible: false,
-      wickUpColor: '#34d399',
-      wickDownColor: '#f87171',
-    });
-
     try {
-      candlestickSeries.setData(temizVeri);
+      if (tip === 'cizgi') {
+        //Çizgi grafik kapanış fiyatlarını kullanır, dönem başına göre yeşil veya kırmızı olur.
+        const yukseliste = temizVeri[temizVeri.length - 1].close >= temizVeri[0].close;
+        const cizgiSerisi = chart.addLineSeries({ color: yukseliste ? '#34d399' : '#f87171', lineWidth: 2 });
+        cizgiSerisi.setData(temizVeri.map(d => ({ time: d.time, value: d.close })));
+      } else {
+        //Yeşil ve kırmızı mumları oluşturma.
+        const candlestickSeries = chart.addCandlestickSeries({
+          upColor: '#34d399',
+          downColor: '#f87171',
+          borderVisible: false,
+          wickUpColor: '#34d399',
+          wickDownColor: '#f87171',
+        });
+        candlestickSeries.setData(temizVeri);
+      }
       chart.timeScale().fitContent();
     } catch (e) {
       console.error("TradingView Çizim Hatası:", e);
@@ -99,7 +119,7 @@ const TradingViewChart = ({ data }) => {
       resizeObserver.disconnect();
       chart.remove();
     };
-  }, [data]);
+  }, [data, tip, saatGoster]);
 
   return <div ref={chartContainerRef} className="w-full h-full" />;
 };
@@ -115,7 +135,13 @@ function App() {
   const [islemTipi, setIslemTipi] = useState('AL');
   const [lotMiktari, setLotMiktari] = useState('');
   // Grafik verisi artık ait olduğu hisse ile tutulacak.
-  const [grafikSonucu, setGrafikSonucu] = useState({ sembol: null, veri: [] });
+  //Sonuç hangi hisse ve döneme aitse onunla tutulur; grafik türü ve dönem seçimi eklendi.
+  const [grafikSonucu, setGrafikSonucu] = useState({ sembol: null, donem: null, veri: [] });
+  const [grafikTipi, setGrafikTipi] = useState('mum');
+  const [grafikDonemi, setGrafikDonemi] = useState('3a');
+  // Portföy grafiğinin dönemi ve verisi, hisse grafiğinden ayrı tutulmalı.
+  const [portfoyDonemi, setPortfoyDonemi] = useState('3a');
+  const [portfoyGrafikSonucu, setPortfoyGrafikSonucu] = useState({ semboller: null, donem: null, veri: [] });
 
   // 1. Portföy başlatılırken önce localStorage kontrol edilir.
   // Eğer kayıtlı veri varsa JSON.parse ile okunur.
@@ -191,21 +217,46 @@ function App() {
   useEffect(() => {
     if (seciliHisse) {
       const sembol = seciliHisse.sembol;
+      //Seçilen dönem backend'e gönderilir, dönem değişince veri yeniden çekilir.
+      const donem = grafikDonemi;
       let iptal = false;
-      fetch(`http://127.0.0.1:8000/api/grafik/${sembol}`)
+      fetch(`http://127.0.0.1:8000/api/grafik/${sembol}?donem=${donem}`)
         .then(res => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return res.json();
         })
         .then(data => {
-          if (!iptal) setGrafikSonucu({ sembol, veri: Array.isArray(data) ? data : [] });
+          if (!iptal) setGrafikSonucu({ sembol, donem, veri: Array.isArray(data) ? data : [] });
         })
         .catch(() => {
-          if (!iptal) setGrafikSonucu({ sembol, veri: [] });
+          if (!iptal) setGrafikSonucu({ sembol, donem, veri: [] });
         });
       return () => { iptal = true; };
     }
-  }, [seciliHisse]);
+  }, [seciliHisse, grafikDonemi]);
+
+  //Portföy sekmesi açıkken geçmiş fiyatlar çekilir. Lot değişince değil, hisse listesi veya dönem değişince yenilenir.
+  const portfoySembolleri = portfoy.map(item => item.sembol).sort().join(',');
+
+  useEffect(() => {
+    if (aktifSekme === 'portfoy' && portfoySembolleri !== '') {
+      const semboller = portfoySembolleri;
+      const donem = portfoyDonemi;
+      let iptal = false;
+      fetch(`http://127.0.0.1:8000/api/portfoy-grafik?semboller=${encodeURIComponent(semboller)}&donem=${donem}`)
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
+        .then(data => {
+          if (!iptal) setPortfoyGrafikSonucu({ semboller, donem, veri: Array.isArray(data) ? data : [] });
+        })
+        .catch(() => {
+          if (!iptal) setPortfoyGrafikSonucu({ semboller, donem, veri: [] });
+        });
+      return () => { iptal = true; };
+    }
+  }, [aktifSekme, portfoySembolleri, portfoyDonemi]);
 
   const filtrelenmisHisseler = hisseler.filter(hisse => 
     hisse.sembol.toLowerCase().includes(aramaMetni.toLowerCase()) || 
@@ -291,6 +342,15 @@ function App() {
       value: sonFiyatBul(item, sonFiyatlar) * item.lot
     };
   }).filter(item => item.value > 0);
+
+  // Grafik yalnızca veri veya portföy değişince yeniden çizilsin diye seriyi saklıyoruz.
+  const portfoyGrafikSerisi = useMemo(
+    () => portfoyDegerSerisi(portfoy, portfoyGrafikSonucu.veri),
+    [portfoy, portfoyGrafikSonucu.veri]
+  );
+  const portfoyGrafikYukleniyor = portfoyGrafikSonucu.semboller !== portfoySembolleri || portfoyGrafikSonucu.donem !== portfoyDonemi;
+  const grafikteOlmayanHisseler = veriOlmayanHisseler(portfoy, portfoyGrafikSonucu.veri);
+
   // Site şablonları ve arayüzü oluşturuldu.
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans relative">
@@ -452,8 +512,55 @@ function App() {
             </div>
 
 
+            {/*Portföy çizgi grafiği. */}
             {portfoy.length > 0 && (
-              <div className="bg-slate-900 p-6 rounded-xl border border-slate-700 mb-8 h-80 flex flex-col justify-center items-center shadow-inner">
+              <div className="bg-slate-900 p-6 rounded-xl border border-slate-700 mb-8 shadow-inner">
+                <div className="flex flex-wrap justify-between items-start gap-2 mb-4">
+                  <div>
+                    <h4 className="text-slate-300 font-medium">Mevcut Hisselerin Geçmiş Performansı</h4>
+                    <p className="text-xs text-slate-500 mt-1">Bugünkü lotlarla hesaplanır, gerçek işlem geçmişini göstermez.</p>
+                  </div>
+                  <div className="flex gap-1">
+                    {GRAFIK_DONEMLERI.map((secenek) => (
+                      <button
+                        key={secenek.kod}
+                        onClick={() => setPortfoyDonemi(secenek.kod)}
+                        className={`px-2 py-1 rounded text-xs font-medium transition ${portfoyDonemi === secenek.kod ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                      >
+                        {secenek.ad}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="h-64 w-full rounded-lg border border-slate-700 overflow-hidden relative">
+                  {portfoyGrafikYukleniyor ? (
+                    <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
+                      Grafik Yükleniyor...
+                    </div>
+                  ) : portfoyGrafikSerisi.length > 0 ? (
+                    <TradingViewChart
+                      data={portfoyGrafikSerisi}
+                      tip="cizgi"
+                      saatGoster={GRAFIK_DONEMLERI.find(d => d.kod === portfoyDonemi).gunIci}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
+                      Grafik verisi alınamadı.
+                    </div>
+                  )}
+                </div>
+
+                {!portfoyGrafikYukleniyor && grafikteOlmayanHisseler.length > 0 && (
+                  <p className="text-xs text-amber-300 mt-2">
+                    Geçmiş verisi alınamadığı için grafiğe dahil edilmedi: {grafikteOlmayanHisseler.join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {portfoy.length > 0 && (
+              <div className={`bg-slate-900 p-6 rounded-xl border border-slate-700 mb-8 ${pastaGrafikVerisi.length > 10 ? 'h-[28rem]' : 'h-80'} flex flex-col justify-center items-center shadow-inner`}>
                 <h4 className="text-slate-300 font-medium mb-4 w-full text-left">Portföy Dağılımı</h4>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -463,12 +570,12 @@ function App() {
                       cy="50%"
                       innerRadius={70}
                       outerRadius={100}
-                      paddingAngle={5}
+                      paddingAngle={Math.min(5, 120 / pastaGrafikVerisi.length)}
                       dataKey="value"
                       stroke="none"
                     >
                       {pastaGrafikVerisi.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={RENKLER[index % RENKLER.length]} />
+                        <Cell key={`cell-${index}`} fill={pastaRengi(index)} />
                       ))}
                     </Pie>
                     <Tooltip 
@@ -476,7 +583,7 @@ function App() {
                       contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f8fafc', borderRadius: '0.5rem' }}
                       itemStyle={{ color: '#e2e8f0' }}
                     />
-                    <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ paddingTop: '20px' }}/>
+                    <Legend verticalAlign="bottom" height={pastaGrafikVerisi.length > 10 ? 90 : 36} iconType="circle" wrapperStyle={{ paddingTop: '20px', overflowY: 'auto' }}/>
                   </PieChart>
                 </ResponsiveContainer>
               </div>
@@ -624,7 +731,7 @@ function App() {
 
       {seciliHisse && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-[36rem] shadow-2xl">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-[36rem] max-h-[90vh] overflow-y-auto shadow-2xl">
             
             <div className="flex justify-between items-center mb-6">
               <div>
@@ -635,14 +742,46 @@ function App() {
               <button onClick={modalKapat} className="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
             </div>
 
+            <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
+              <div className="flex gap-1">
+                {GRAFIK_DONEMLERI.map((secenek) => (
+                  <button
+                    key={secenek.kod}
+                    onClick={() => setGrafikDonemi(secenek.kod)}
+                    className={`px-2 py-1 rounded text-xs font-medium transition ${grafikDonemi === secenek.kod ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                  >
+                    {secenek.ad}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setGrafikTipi('mum')}
+                  className={`px-2 py-1 rounded text-xs font-medium transition ${grafikTipi === 'mum' ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                >
+                  Mum
+                </button>
+                <button
+                  onClick={() => setGrafikTipi('cizgi')}
+                  className={`px-2 py-1 rounded text-xs font-medium transition ${grafikTipi === 'cizgi' ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                >
+                  Çizgi
+                </button>
+              </div>
+            </div>
+
             <div className="h-64 w-full bg-slate-900 rounded-lg mb-6 border border-slate-700 overflow-hidden relative">
                 {/* Grafik için yükleniyor ve veri yok durumları ayrıldı. */}
-                {grafikSonucu.sembol !== seciliHisse.sembol ? (
+                {grafikSonucu.sembol !== seciliHisse.sembol || grafikSonucu.donem !== grafikDonemi ? (
                     <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
-                        Mum Grafiği Yükleniyor...
+                        Grafik Yükleniyor...
                     </div>
                 ) : grafikSonucu.veri.length > 0 ? (
-                    <TradingViewChart data={grafikSonucu.veri} />
+                    <TradingViewChart
+                      data={grafikSonucu.veri}
+                      tip={grafikTipi}
+                      saatGoster={GRAFIK_DONEMLERI.find(d => d.kod === grafikDonemi).gunIci}
+                    />
                 ) : (
                     <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
                         Grafik verisi alınamadı.

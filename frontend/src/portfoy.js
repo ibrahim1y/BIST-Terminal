@@ -106,6 +106,27 @@ export const bakiyeHesapla = (hareketler) => kurusaYuvarla(hareketler.reduce((to
 //Bakiye ve tutar kontrolü.
 export const yeterliBakiyeVarMi = (bakiye, tutar) => bakiye >= kurusaYuvarla(tutar);
 
+//Pasta grafiği renklerine ekleme yapıldı. Yan yana gelen renklerin aynı olması sorunu çözüldü.
+const RENKLER = [
+  '#34d399', '#3b82f6', '#f59e0b', '#ec4899', '#8b5cf6', '#14b8a6', '#f43f5e', '#84cc16', '#06b6d4', '#f97316',
+  '#a855f7', '#eab308', '#0ea5e9', '#d946ef', '#22c55e', '#ef4444', '#6366f1', '#facc15', '#fb7185', '#c084fc'
+];
+
+//Her ihtimale karşı gerektiğinde yeni renk üretimi için. Renkler başa dönüp aynı renkler gelmesin diye.
+export const pastaRengi = (index) => RENKLER[index] ?? `hsl(${(index * 137.508) % 360}, 70%, 55%)`;
+
+//Geçmiş fiyatları bugünkü lotlarla çarpıp portföy değerinin zaman serisini oluşturur.
+export const portfoyDegerSerisi = (portfoy, satirlar) => satirlar.map(({ time, fiyatlar }) => {
+  const deger = kurusaYuvarla(portfoy.reduce((toplam, item) => toplam + ((fiyatlar[item.sembol] ?? 0) * item.lot), 0));
+  return { time, open: deger, high: deger, low: deger, close: deger };
+});
+
+//Geçmiş verisi gelmeyen hisselerin sembollerini döndürür.
+export const veriOlmayanHisseler = (portfoy, satirlar) => {
+  if (satirlar.length === 0) return [];
+  return portfoy.map(item => item.sembol).filter(sembol => satirlar[0].fiyatlar[sembol] === undefined);
+};
+
 //Portföyün toplam değerini ve kâr/zararını hesaplar.
 export const portfoyOzeti = (portfoy, sonFiyatlar) => {
   const toplamPortfoyDegeri = portfoy.reduce((toplam, item) => toplam + (sonFiyatBul(item, sonFiyatlar) * item.lot), 0);
