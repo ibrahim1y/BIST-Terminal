@@ -4,6 +4,8 @@ import {
   analiziCanlandir,
   analizIslemleri,
   seriyiDonemeGoreKes,
+  kapaliGunleriCikar,
+  toplamKarZarar,
   bakiyeHesapla,
   gecerliIslemKaydi,
   gecerliNakitKaydi,
@@ -411,5 +413,42 @@ describe('seriyiDonemeGoreKes', () => {
 
   it('boş seride çökmez', () => {
     expect(seriyiDonemeGoreKes([], '3a')).toEqual([]);
+  });
+});
+
+// Kapalı günlerin grafikten çıkarılması.
+describe('kapaliGunleriCikar', () => {
+  const gun = (date, portfolio_value, total_invested = 100, realized_pnl = 0) => ({ date, portfolio_value, total_invested, realized_pnl });
+  const tarihler = (seri) => kapaliGunleriCikar(seri).map(n => n.date);
+
+  it('önceki günle aynı olan günleri çıkarır', () => {
+    expect(tarihler([gun('2026-10-02', 110), gun('2026-10-03', 110), gun('2026-10-04', 110), gun('2026-10-05', 120)]))
+      .toEqual(['2026-10-02', '2026-10-05']);
+  });
+
+  it('kapalı günde yapılan işlemi korur', () => {
+    expect(tarihler([gun('2026-10-02', 110), gun('2026-10-03', 110, 150), gun('2026-10-04', 110, 150), gun('2026-10-05', 120, 150)]))
+      .toEqual(['2026-10-02', '2026-10-03', '2026-10-05']);
+    expect(tarihler([gun('2026-10-02', 110), gun('2026-10-03', 110, 100, 5), gun('2026-10-05', 120, 100, 5)]))
+      .toEqual(['2026-10-02', '2026-10-03', '2026-10-05']);
+  });
+
+  it('değişmese de ilk ve son günü korur', () => {
+    expect(tarihler([gun('2026-10-02', 110), gun('2026-10-03', 110), gun('2026-10-04', 110)])).toEqual(['2026-10-02', '2026-10-04']);
+    expect(tarihler([gun('2026-10-02', 110)])).toEqual(['2026-10-02']);
+    expect(tarihler([])).toEqual([]);
+  });
+
+  it('gün içi noktalara dokunmaz', () => {
+    const seri = [gun('2026-10-02T10:00:00', 110), gun('2026-10-02T10:05:00', 110), gun('2026-10-02T10:10:00', 110)];
+    expect(kapaliGunleriCikar(seri)).toEqual(seri);
+  });
+});
+
+// Kâr/Zarar görünümünün değeri.
+describe('toplamKarZarar', () => {
+  it('açık ve gerçekleşen kârı kuruşa yuvarlayarak toplar', () => {
+    expect(toplamKarZarar({ unrealized_pnl: 10.1, realized_pnl: 0.2 })).toBe(10.3);
+    expect(toplamKarZarar({ unrealized_pnl: -30, realized_pnl: 20 })).toBe(-10);
   });
 });

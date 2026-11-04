@@ -179,3 +179,16 @@ export const seriyiDonemeGoreKes = (seri, donem) => {
   const sinir = new Date(Date.parse(seri[seri.length - 1].date) - gun * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   return seri.filter(nokta => nokta.date >= sinir);
 };
+
+// Borsanın kapalı olduğu günler önceki günün aynısıdır, grafikte düz bölüm yaratmasın diye çıkarılır.
+// Değer, maliyet veya gerçekleşen kâr değiştiyse gün kalır; hafta sonu yapılan işlem böylece kaybolmaz. Son gün her zaman kalır.
+export const kapaliGunleriCikar = (seri) => seri.filter((nokta, i) => {
+  if (i === 0 || i === seri.length - 1 || nokta.date.includes('T')) return true;
+  const onceki = seri[i - 1];
+  return nokta.portfolio_value !== onceki.portfolio_value
+    || nokta.total_invested !== onceki.total_invested
+    || nokta.realized_pnl !== onceki.realized_pnl;
+});
+
+// Açık ve gerçekleşen kârın toplamı. Alım ve satım bu toplamı sıçratmaz, yalnızca fiyat hareketi değiştirir.
+export const toplamKarZarar = (nokta) => kurusaYuvarla(nokta.unrealized_pnl + nokta.realized_pnl);

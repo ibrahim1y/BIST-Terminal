@@ -9,6 +9,8 @@ import {
   analiziCanlandir,
   analizIslemleri,
   seriyiDonemeGoreKes,
+  // Kapalı günler grafikten çıkarılır.
+  kapaliGunleriCikar,
   bakiyeHesapla,
   gecerliIslemKaydi,
   gecerliNakitKaydi,
@@ -397,7 +399,7 @@ function App() {
     [portfoyGrafikSonucu.veri, sonFiyatlar]
   );
   const portfoyGrafikSerisi = useMemo(
-    () => seriyiDonemeGoreKes(portfoyAnalizi?.series ?? [], portfoyDonemi),
+    () => kapaliGunleriCikar(seriyiDonemeGoreKes(portfoyAnalizi?.series ?? [], portfoyDonemi)),
     [portfoyAnalizi, portfoyDonemi]
   );
   const portfoyGrafikYukleniyor = portfoyGrafikSonucu.semboller !== portfoySembolleri || portfoyGrafikSonucu.gunIci !== portfoyGunIci;
