@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   alimUygula,
+  analiziCanlandir,
+  analizIslemleri,
+  seriyiDonemeGoreKes,
   bakiyeHesapla,
   gecerliIslemKaydi,
   gecerliNakitKaydi,
@@ -15,13 +18,11 @@ import {
   nakitHareketi,
   paraYatir,
   pastaRengi,
-  portfoyDegerSerisi,
   portfoyOzeti,
   satimUygula,
   sonFiyatBul,
   toplamGerceklesenKarZarar,
   tutarCoz,
-  veriOlmayanHisseler,
   yeterliBakiyeVarMi,
 } from './portfoy';
 
@@ -262,199 +263,6 @@ describe('pastaRengi', () => {
   });
 });
 
-describe('portfoyDegerSerisi', () => {
-  const gun = (g) => `2026-01-0${g}`;
-  const istanbul = (g, saat, dakika = 0) => Date.UTC(2026, 0, g, saat - 3, dakika);
-  const islem = (tip, sembol, lot, id) => ({ id, tip, sembol, lot, fiyat: 1, tutar: lot });
-  const ucGun = [
-    { time: gun(1), fiyatlar: { A: 10 } },
-    { time: gun(2), fiyatlar: { A: 12 } },
-    { time: gun(3), fiyatlar: { A: 14 } },
-  ];
-  const degerler = (seri) => seri.map(nokta => [nokta.time, nokta.close]);
-
-  it('işlem kaydı olmayan lotları geçmişe yazmaz, yalnızca son noktada sayar', () => {
-    expect(degerler(portfoyDegerSerisi([hisse('A', 5, 1)], [], ucGun, {}))).toEqual([
-      [gun(3), 70],
-    ]);
-  });
-
-  it('bugün alınan hisse için geçmiş çizmez', () => {
-    const uzunGecmis = Array.from({ length: 262 }, (_, i) => ({ time: Date.UTC(2021, 0, 4 + i * 7) / 1000, fiyatlar: { A: 10 } }));
-    const bugun = uzunGecmis.at(-1).time * 1000 + 1000;
-    const seri = portfoyDegerSerisi([hisse('A', 5, 1)], [islem('AL', 'A', 5, bugun)], uzunGecmis, {});
-    expect(seri.map(nokta => nokta.close)).toEqual([50]);
-  });
-
-  it('kayıtlı geçmişe sonradan eklenen kayıtsız lotu yalnızca son noktada sayar', () => {
-    const seri = portfoyDegerSerisi([hisse('A', 8, 1)], [islem('AL', 'A', 5, istanbul(1, 11))], ucGun, {});
-    expect(degerler(seri)).toEqual([
-      [gun(1), 50],
-      [gun(2), 60],
-      [gun(3), 112],
-    ]);
-  });
-
-  it('ek alımı yapıldığı günden itibaren sayar, geçmişi değiştirmez', () => {
-    const islemler = [islem('AL', 'A', 5, istanbul(1, 11)), islem('AL', 'A', 5, istanbul(2, 11))];
-    const seri = portfoyDegerSerisi([hisse('A', 10, 1)], islemler, ucGun, {});
-    expect(degerler(seri)).toEqual([
-      [gun(1), 50],
-      [gun(2), 120],
-      [gun(3), 140],
-    ]);
-  });
-
-  it('ilk alımdan önceki tarihleri seriye almaz', () => {
-    const seri = portfoyDegerSerisi([hisse('A', 5, 1)], [islem('AL', 'A', 5, istanbul(2, 11))], ucGun, {});
-    expect(degerler(seri)).toEqual([
-      [gun(2), 60],
-      [gun(3), 70],
-    ]);
-  });
-
-  it('kısmi satışı yapıldığı günden itibaren sayar', () => {
-    const islemler = [islem('AL', 'A', 10, istanbul(1, 11)), islem('SAT', 'A', 5, istanbul(2, 11))];
-    const seri = portfoyDegerSerisi([hisse('A', 5, 1)], islemler, ucGun, {});
-    expect(degerler(seri)).toEqual([
-      [gun(1), 100],
-      [gun(2), 60],
-      [gun(3), 70],
-    ]);
-  });
-
-  it('tamamen satılan hisseyi satılana kadar sayar, sonra sıfırlar', () => {
-    const islemler = [islem('AL', 'A', 5, istanbul(1, 11)), islem('SAT', 'A', 5, istanbul(2, 11))];
-    expect(degerler(portfoyDegerSerisi([], islemler, ucGun, {}))).toEqual([
-      [gun(1), 50],
-      [gun(2), 0],
-      [gun(3), 0],
-    ]);
-  });
-
-  it('birden çok işlemi tarih sırasıyla uygular', () => {
-    const islemler = [
-      islem('SAT', 'A', 2, istanbul(3, 11)),
-      islem('AL', 'A', 3, istanbul(2, 11)),
-      islem('AL', 'A', 4, istanbul(1, 11)),
-    ];
-    expect(degerler(portfoyDegerSerisi([hisse('A', 5, 1)], islemler, ucGun, {}))).toEqual([
-      [gun(1), 40],
-      [gun(2), 84],
-      [gun(3), 70],
-    ]);
-  });
-
-  it('verilen işlem listesini değiştirmez', () => {
-    const islemler = [islem('AL', 'A', 1, 1), islem('AL', 'A', 1, 2)];
-    portfoyDegerSerisi([hisse('A', 2, 1)], islemler, ucGun, {});
-    expect(islemler.map(i => i.id)).toEqual([1, 2]);
-  });
-
-  it('son nokta canlı fiyatı kullanır ve Toplam Portföy ile aynı olur', () => {
-    const portfoy = [hisse('A', 5, 1), hisse('B', 2, 1)];
-    const satirlar = [
-      { time: gun(1), fiyatlar: { A: 10, B: 20 } },
-      { time: gun(2), fiyatlar: { A: 12, B: 25 } },
-    ];
-    const canli = { A: 20, B: 30 };
-    const islemler = [islem('AL', 'A', 5, istanbul(1, 11)), islem('AL', 'B', 2, istanbul(1, 11))];
-    const seri = portfoyDegerSerisi(portfoy, islemler, satirlar, canli);
-    expect(seri[0].close).toBe(90);
-    expect(seri[1].close).toBe(160);
-    expect(seri[1].close).toBe(portfoyOzeti(portfoy, canli).toplamPortfoyDegeri);
-  });
-
-  it('gün içi veride işlemi doğru çubuğa yazar', () => {
-    const cubuk = (dakika) => Date.UTC(2026, 0, 2, 10, dakika) / 1000;
-    const satirlar = [0, 5, 10].map(dakika => ({ time: cubuk(dakika), fiyatlar: { A: 10 } }));
-    const islemler = [islem('AL', 'A', 1, istanbul(2, 9)), islem('AL', 'A', 2, istanbul(2, 10, 7))];
-    const seri = portfoyDegerSerisi([hisse('A', 3, 1)], islemler, satirlar, {});
-    expect(seri.map(nokta => nokta.close)).toEqual([10, 30, 30]);
-  });
-
-  it('gece yarısına yakın işlemi İstanbul saatine göre doğru güne yazar', () => {
-    const ilkAlim = islem('AL', 'A', 3, istanbul(1, 9));
-    const seri = portfoyDegerSerisi([hisse('A', 5, 1)], [ilkAlim, islem('AL', 'A', 2, istanbul(2, 0, 30))], ucGun, {});
-    expect(degerler(seri)[0]).toEqual([gun(1), 30]);
-    expect(degerler(seri)[1]).toEqual([gun(2), 60]);
-
-    const oncekiGun = portfoyDegerSerisi([hisse('A', 5, 1)], [ilkAlim, islem('AL', 'A', 2, istanbul(1, 23, 30))], ucGun, {});
-    expect(degerler(oncekiGun)[0]).toEqual([gun(1), 50]);
-  });
-
-  it('haftalık veride hafta içi işlemi o haftaya yazar', () => {
-    const haftalar = ['2026-01-05', '2026-01-12', '2026-01-19'].map(time => ({ time, fiyatlar: { A: 10 } }));
-    const islemler = [islem('AL', 'A', 1, Date.UTC(2026, 0, 5, 9)), islem('AL', 'A', 2, Date.UTC(2026, 0, 14, 9))];
-    const seri = portfoyDegerSerisi([hisse('A', 3, 1)], islemler, haftalar, {});
-    expect(seri.map(nokta => nokta.close)).toEqual([10, 30, 30]);
-  });
-
-  it('kaydı olmayan satış lotu negatife düşürmez', () => {
-    const islemler = [islem('SAT', 'A', 5, istanbul(1, 11)), islem('AL', 'A', 5, istanbul(2, 11))];
-    const seri = portfoyDegerSerisi([hisse('A', 5, 1)], islemler, ucGun, {});
-    expect(degerler(seri)).toEqual([
-      [gun(2), 60],
-      [gun(3), 70],
-    ]);
-  });
-
-  it('hiç verisi olmayan hisse seriyi bozmaz', () => {
-    const islemler = [islem('AL', 'A', 5, istanbul(1, 11)), islem('AL', 'Z', 9, istanbul(1, 11))];
-    const seri = portfoyDegerSerisi([hisse('A', 5, 1), hisse('Z', 9, 1)], islemler, ucGun, { Z: 100 });
-    expect(seri.map(nokta => nokta.close)).toEqual([50, 60, 70]);
-  });
-
-  it('elde tutulan hissenin verisi başlamadan önceki tarihleri atlar', () => {
-    const satirlar = [
-      { time: gun(1), fiyatlar: { A: 10 } },
-      { time: gun(2), fiyatlar: { A: 12, B: 20 } },
-    ];
-    const islemler = [islem('AL', 'A', 5, istanbul(1, 11)), islem('AL', 'B', 2, istanbul(1, 11))];
-    expect(degerler(portfoyDegerSerisi([hisse('A', 5, 1), hisse('B', 2, 1)], islemler, satirlar, {}))).toEqual([
-      [gun(2), 100],
-    ]);
-  });
-
-  it('sonradan alınan yeni hisse eski tarihleri atlatmaz', () => {
-    const satirlar = [
-      { time: gun(1), fiyatlar: { A: 10 } },
-      { time: gun(2), fiyatlar: { A: 12, B: 20 } },
-    ];
-    const islemler = [islem('AL', 'A', 5, istanbul(1, 11)), islem('AL', 'B', 2, istanbul(2, 11))];
-    const seri = portfoyDegerSerisi([hisse('A', 5, 1), hisse('B', 2, 1)], islemler, satirlar, {});
-    expect(degerler(seri)).toEqual([
-      [gun(1), 50],
-      [gun(2), 100],
-    ]);
-  });
-
-  it('zamanı geçersiz işlemi yok sayar', () => {
-    const islemler = [islem('AL', 'A', 5, istanbul(1, 11)), islem('AL', 'A', 5, undefined)];
-    const seri = portfoyDegerSerisi([hisse('A', 5, 1)], islemler, ucGun, {});
-    expect(seri.map(nokta => nokta.close)).toEqual([50, 60, 70]);
-  });
-
-  it('grafik bileşeninin beklediği alanların hepsini doldurur', () => {
-    expect(portfoyDegerSerisi([hisse('A', 9, 1)], [], [{ time: 1000, fiyatlar: { A: 10 } }], {})[0]).toEqual({
-      time: 1000,
-      open: 90,
-      high: 90,
-      low: 90,
-      close: 90,
-    });
-  });
-
-  it('değeri kuruşa yuvarlar', () => {
-    expect(portfoyDegerSerisi([hisse('A', 3, 1)], [], [{ time: 1, fiyatlar: { A: 0.1 } }], {})[0].close).toBe(0.3);
-  });
-
-  it('veri veya hisse yoksa boş seri döner', () => {
-    expect(portfoyDegerSerisi([hisse('A', 5, 1)], [], [], {})).toEqual([]);
-    expect(portfoyDegerSerisi([], [], ucGun, {})).toEqual([]);
-  });
-});
-
 describe('kaydiOlmayanHisseler', () => {
   const al = (sembol, lot, id = 1) => ({ id, tip: 'AL', sembol, lot });
   const sat = (sembol, lot, id = 2) => ({ id, tip: 'SAT', sembol, lot });
@@ -490,30 +298,6 @@ describe('grafikSembolleri', () => {
   });
 });
 
-describe('veriOlmayanHisseler', () => {
-  const portfoy = [hisse('A', 5, 100), hisse('B', 2, 50)];
-
-  it('verisi gelmeyen sembolleri döner', () => {
-    expect(veriOlmayanHisseler(portfoy, [{ time: 1, fiyatlar: { A: 10 } }])).toEqual(['B']);
-  });
-
-  it('verisi sonradan başlayan hisseyi eksik saymaz', () => {
-    const satirlar = [
-      { time: 1, fiyatlar: { A: 10 } },
-      { time: 2, fiyatlar: { A: 10, B: 20 } },
-    ];
-    expect(veriOlmayanHisseler(portfoy, satirlar)).toEqual([]);
-  });
-
-  it('hepsinin verisi varsa boş döner', () => {
-    expect(veriOlmayanHisseler(portfoy, [{ time: 1, fiyatlar: { A: 10, B: 20 } }])).toEqual([]);
-  });
-
-  it('hiç veri yoksa boş döner', () => {
-    expect(veriOlmayanHisseler(portfoy, [])).toEqual([]);
-  });
-});
-
 describe('kayıt doğrulama', () => {
   it('sağlam portföy kaydını kabul eder', () => {
     expect(gecerliPortfoyKaydi(hisse('A', 5, 100))).toBe(true);
@@ -543,5 +327,89 @@ describe('kayitliListeyiOku', () => {
     const saglam = hisse('A', 5, 100);
     kayitla(JSON.stringify([1, saglam, {}]));
     expect(kayitliListeyiOku('anahtar', gecerliPortfoyKaydi)).toEqual([saglam]);
+  });
+});
+
+//Backend'e gönderilen işlemler, canlı son nokta ve dönem kesme testleri.
+describe('analizIslemleri', () => {
+  const kayit = (id, tip, sembol, lot, fiyat) => ({ id, tip, sembol, lot, fiyat, tutar: lot * fiyat });
+
+  it('işlemleri eskiden yeniye sıralar ve backend biçimine çevirir', () => {
+    const sonraki = Date.UTC(2026, 9, 1, 8, 0);
+    const onceki = Date.UTC(2026, 9, 1, 7, 0);
+    expect(analizIslemleri([kayit(sonraki, 'SAT', 'A', 2, 12), kayit(onceki, 'AL', 'A', 5, 10)])).toEqual([
+      { date: '2026-10-01T10:00:00', ticker: 'A.IS', type: 'BUY', quantity: 5, price: 10 },
+      { date: '2026-10-01T11:00:00', ticker: 'A.IS', type: 'SELL', quantity: 2, price: 12 },
+    ]);
+  });
+
+  it('tarihi İstanbul saatine göre yazar', () => {
+    const [islem] = analizIslemleri([kayit(Date.UTC(2026, 9, 1, 22, 0), 'AL', 'A', 1, 10)]);
+    expect(islem.date).toBe('2026-10-02T01:00:00');
+  });
+
+  it('backend tarafından reddedilecek bozuk kayıtları atar', () => {
+    expect(analizIslemleri([kayit(undefined, 'AL', 'A', 1, 10), kayit(1, 'AL', 'A', 0, 10), kayit(2, 'AL', 'A', 1, 0)])).toEqual([]);
+  });
+});
+
+describe('analiziCanlandir', () => {
+  const gun = (date, portfolio_value) => ({
+    date,
+    portfolio_value,
+    total_invested: 1000,
+    unrealized_pnl: portfolio_value - 1000,
+    unrealized_return_pct: (portfolio_value - 1000) / 10,
+    realized_pnl: 50,
+  });
+  const analiz = {
+    summary: gun('2026-10-02', 1100),
+    positions: [{ ticker: 'A.IS', lots: 10, wac: 100, last_price: 110 }],
+    series: [gun('2026-10-01', 1000), gun('2026-10-02', 1100)],
+    warnings: { rejected_sales: [], missing_prices: [] },
+  };
+
+  it('yalnızca son günü ve özeti canlı fiyatla günceller', () => {
+    const sonuc = analiziCanlandir(analiz, { A: 120 });
+    expect(sonuc.series[0]).toEqual(analiz.series[0]);
+    expect(sonuc.series[1]).toEqual({ ...gun('2026-10-02', 1200), unrealized_pnl: 200, unrealized_return_pct: 20 });
+    expect(sonuc.summary).toEqual(sonuc.series[1]);
+  });
+
+  it('canlı fiyat yoksa backend fiyatını kullanır', () => {
+    expect(analiziCanlandir(analiz, {}).summary.portfolio_value).toBe(1100);
+  });
+
+  it('maliyet sıfırsa getiri sıfır olur', () => {
+    const satilmis = {
+      ...analiz,
+      positions: [],
+      series: [{ ...gun('2026-10-02', 0), total_invested: 0, unrealized_pnl: 0, unrealized_return_pct: 0 }],
+    };
+    expect(analiziCanlandir(satilmis, { A: 120 }).summary.unrealized_return_pct).toBe(0);
+  });
+
+  it('veri yoksa veya seri boşsa aynen döner', () => {
+    const bos = { summary: null, positions: [], series: [], warnings: {} };
+    expect(analiziCanlandir(null, {})).toBeNull();
+    expect(analiziCanlandir(bos, {})).toBe(bos);
+  });
+});
+
+describe('seriyiDonemeGoreKes', () => {
+  const seri = ['2026-01-01', '2026-09-30', '2026-10-01', '2026-10-25', '2026-10-31'].map(date => ({ date }));
+
+  it('son tarihten geriye dönem kadar gün bırakır', () => {
+    expect(seriyiDonemeGoreKes(seri, '1a').map(n => n.date)).toEqual(['2026-10-01', '2026-10-25', '2026-10-31']);
+    expect(seriyiDonemeGoreKes(seri, '1h').map(n => n.date)).toEqual(['2026-10-25', '2026-10-31']);
+  });
+
+  // 1G serisi backend'den yalnızca son seans olarak gelir, kesilmez.
+  it('1G serisine dokunmaz', () => {
+    expect(seriyiDonemeGoreKes(seri, '1g')).toEqual(seri);
+  });
+
+  it('boş seride çökmez', () => {
+    expect(seriyiDonemeGoreKes([], '3a')).toEqual([]);
   });
 });

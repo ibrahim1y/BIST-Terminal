@@ -72,12 +72,20 @@ npm test
 
 Testler al/sat, kâr/zarar ve bakiye hesaplarını kapsar.
 
+Portföy analizi testleri için `backend` klasöründe:
+
+```bash
+python -m unittest
+```
+
 ## API
 
 | Uç | Açıklama |
 |---|---|
 | `GET /api/hisseler` | Hisse listesi, fiyat ve günlük değişim (30 saniye önbellekli) |
 | `GET /api/grafik/{sembol}` | Hissenin son 3 aylık günlük mum verisi |
+| `POST /api/portfoy-analiz/gun-ici` | Aynı analiz, seri olarak son seansın 5 dakikalık noktaları |
+| `POST /api/portfoy-analiz` | İşlem geçmişinden ağırlıklı ortalama maliyet, açık ve gerçekleşen kâr ile günlük zaman serisi |
 
 ## Notlar
 

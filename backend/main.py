@@ -4,6 +4,9 @@ from fastapi.middleware.cors import CORSMiddleware
 import threading
 import time
 import yfinance as yf
+# Portföy analizi endpoint'i için eklendi.
+from typing import Any
+from portfoy_analiz import FiyatVerisiHatasi, IslemHatasi, portfoy_analizi, portfoy_gun_ici_analizi
 
 app = FastAPI()
 
@@ -116,35 +119,26 @@ def get_grafik(sembol: str, donem: str = "3a"):
         print(f"HATA - {sembol} grafiği çekilemedi: {e}")
         return []
 
-#Portföy grafiği için birden çok hissenin kapanış fiyatlarını tek istekte döner.
-@app.get("/api/portfoy-grafik")
-def get_portfoy_grafik(semboller: str, donem: str = "3a"):
-    if donem not in GRAFIK_DONEMLERI:
-        raise HTTPException(status_code=400, detail="Geçersiz dönem")
-
-    liste = list(dict.fromkeys(s.strip().upper() for s in semboller.split(",") if s.strip()))
-    if not liste or len(liste) > 200 or not all(s.isascii() and s.isalnum() for s in liste):
-        raise HTTPException(status_code=400, detail="Geçersiz hisse listesi")
-
-    aralik, siklik = GRAFIK_DONEMLERI[donem]
-    gun_ici = siklik.endswith("m")
-
+# İşlem geçmişini alır, WAC tabanlı güncel özeti ve günlük zaman serisini döner.
+# İşlemler tarayıcıda tutulduğu için istek gövdesinde gönderilir.
+@app.post("/api/portfoy-analiz")
+def post_portfoy_analiz(islemler: list[dict[str, Any]]):
     try:
-        data = yf.download(" ".join(f"{s}.IS" for s in liste), period=aralik, interval=siklik, progress=False)
-        if data.empty:
-            return []
+        return portfoy_analizi(islemler)
+    except IslemHatasi as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FiyatVerisiHatasi as e:
+        print(f"HATA - portföy analizi fiyatları çekilemedi: {e}")
+        raise HTTPException(status_code=503, detail="Fiyat verisi alınamadı")
 
-        #Verisi olmayan hisse çıkarılır, boşluklar önceki fiyatla dolar.
-        #Yeni halka arz grafiği kısaltmasın diye yalnızca hiçbir hissenin fiyatı olmayan satırlar atılır, o tarihte fiyatı olan hisseler gönderilir.
-        kapanislar = data["Close"].dropna(axis=1, how="all").ffill().dropna(how="all")
 
-        grafik_verisi = []
-        for index, row in kapanislar.iterrows():
-            grafik_verisi.append({
-                "time": int(index.timestamp() + index.utcoffset().total_seconds()) if gun_ici else index.strftime("%Y-%m-%d"),
-                "fiyatlar": {kolon.removesuffix(".IS"): round(float(fiyat), 2) for kolon, fiyat in row.dropna().items()}
-            })
-        return grafik_verisi
-    except Exception as e:
-        print(f"HATA - portföy grafiği çekilemedi: {e}")
-        return []
+#Portföy grafiğinin 1G görünümü için son seansın 5 dakikalık serisini döner.
+@app.post("/api/portfoy-analiz/gun-ici")
+def post_portfoy_gun_ici_analiz(islemler: list[dict[str, Any]]):
+    try:
+        return portfoy_gun_ici_analizi(islemler)
+    except IslemHatasi as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FiyatVerisiHatasi as e:
+        print(f"HATA - portföy gün içi fiyatları çekilemedi: {e}")
+        raise HTTPException(status_code=503, detail="Fiyat verisi alınamadı")

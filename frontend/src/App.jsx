@@ -5,6 +5,10 @@ import {PieChart, Pie,Cell, Tooltip, ResponsiveContainer, Legend} from 'recharts
 //Al/sat ve kâr/zarar hesapları portfoy.js dosyasından gelir.
 import {
   alimUygula,
+  // Yeni portföy analizi yardımcıları.
+  analiziCanlandir,
+  analizIslemleri,
+  seriyiDonemeGoreKes,
   bakiyeHesapla,
   gecerliIslemKaydi,
   gecerliNakitKaydi,
@@ -19,15 +23,15 @@ import {
   nakitHareketi,
   paraYatir,
   pastaRengi,
-  portfoyDegerSerisi,
   portfoyOzeti,
   satimUygula,
   sonFiyatBul,
   toplamGerceklesenKarZarar,
   tutarCoz,
-  veriOlmayanHisseler,
   yeterliBakiyeVarMi,
 } from './portfoy';
+//Özet kartları ve maliyet çizgili yeni portföy grafiği.
+import PortfoyGrafigi from './PortfoyGrafigi';
 
 // Grafikte dönem seçimi eklendi.
 const GRAFIK_DONEMLERI = [
@@ -165,7 +169,10 @@ function App() {
   const [grafikDonemi, setGrafikDonemi] = useState('3a');
   // Portföy grafiğinin dönemi ve verisi, hisse grafiğinden ayrı tutulmalı.
   const [portfoyDonemi, setPortfoyDonemi] = useState('3a');
-  const [portfoyGrafikSonucu, setPortfoyGrafikSonucu] = useState({ semboller: null, donem: null, veri: [] });
+  // Tüm geçmiş tek seferde geldiği için dönem sonuçta tutulmaz, seri ekranda kesilir.
+  // 1G gün içi seri kullandığı için sonucun hangi seri türüne ait olduğu da tutulur.
+  const [portfoyGrafikSonucu, setPortfoyGrafikSonucu] = useState({ semboller: null, gunIci: false, veri: null });
+  const portfoyGunIci = portfoyDonemi === '1g';
 
   // 1. Portföy başlatılırken önce localStorage kontrol edilir.
   // Eğer kayıtlı veri varsa JSON.parse ile okunur.
@@ -259,29 +266,33 @@ function App() {
     }
   }, [seciliHisse, grafikDonemi]);
 
-  //Portföy sekmesi açıkken geçmiş fiyatlar çekilir.
-  //Satılan hisseler de geçmiş değer için gerekir, bu yüzden işlem geçmişindeki hisseler de istenir.
   const portfoySembolleri = grafikSembolleri(portfoy, islemGecmisi);
 
   useEffect(() => {
     if (aktifSekme === 'portfoy' && portfoySembolleri !== '') {
       const semboller = portfoySembolleri;
-      const donem = portfoyDonemi;
+      const gunIci = portfoyGunIci;
+      // İşlemler tarayıcıda tutulduğu için analiz isteğinin gövdesinde gönderilir.
+      const govde = JSON.stringify(analizIslemleri(islemGecmisi));
       let iptal = false;
       //Yenileme başarısız olursa eldeki grafik silinmez.
       const sonucuYaz = (veri) => setPortfoyGrafikSonucu(onceki => (
-        veri.length === 0 && onceki.semboller === semboller && onceki.donem === donem ? onceki : { semboller, donem, veri }
+        veri === null && onceki.semboller === semboller && onceki.gunIci === gunIci ? onceki : { semboller, gunIci, veri }
       ));
-      const veriyiGetir = () => fetch(`http://127.0.0.1:8000/api/portfoy-grafik?semboller=${encodeURIComponent(semboller)}&donem=${donem}`)
+      const veriyiGetir = () => fetch(`http://127.0.0.1:8000/api/portfoy-analiz${gunIci ? '/gun-ici' : ''}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: govde,
+      })
         .then(res => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return res.json();
         })
         .then(data => {
-          if (!iptal) sonucuYaz(Array.isArray(data) ? data : []);
+          if (!iptal) sonucuYaz(data);
         })
         .catch(() => {
-          if (!iptal) sonucuYaz([]);
+          if (!iptal) sonucuYaz(null);
         });
 
       veriyiGetir();
@@ -292,7 +303,7 @@ function App() {
         clearInterval(intervalId);
       };
     }
-  }, [aktifSekme, portfoySembolleri, portfoyDonemi]);
+  }, [aktifSekme, portfoySembolleri, islemGecmisi, portfoyGunIci]);
 
   const filtrelenmisHisseler = hisseler.filter(hisse => 
     hisse.sembol.toLowerCase().includes(aramaMetni.toLowerCase()) || 
@@ -380,12 +391,16 @@ function App() {
   }).filter(item => item.value > 0);
 
   //Seri işlem geçmişi ve güncel fiyatlarla da yenilenir, son nokta güncel değeri gösterir.
-  const portfoyGrafikSerisi = useMemo(
-    () => portfoyDegerSerisi(portfoy, islemGecmisi, portfoyGrafikSonucu.veri, sonFiyatlar),
-    [portfoy, islemGecmisi, portfoyGrafikSonucu.veri, sonFiyatlar]
+  // Backend sonucunun son günü canlı fiyatlarla güncellenir, seri seçilen döneme göre kesilir.
+  const portfoyAnalizi = useMemo(
+    () => analiziCanlandir(portfoyGrafikSonucu.veri, sonFiyatlar),
+    [portfoyGrafikSonucu.veri, sonFiyatlar]
   );
-  const portfoyGrafikYukleniyor = portfoyGrafikSonucu.semboller !== portfoySembolleri || portfoyGrafikSonucu.donem !== portfoyDonemi;
-  const grafikteOlmayanHisseler = veriOlmayanHisseler(portfoy, portfoyGrafikSonucu.veri);
+  const portfoyGrafikSerisi = useMemo(
+    () => seriyiDonemeGoreKes(portfoyAnalizi?.series ?? [], portfoyDonemi),
+    [portfoyAnalizi, portfoyDonemi]
+  );
+  const portfoyGrafikYukleniyor = portfoyGrafikSonucu.semboller !== portfoySembolleri || portfoyGrafikSonucu.gunIci !== portfoyGunIci;
   //Alım kaydı olmayan lotlar için uyarı gösterilir.
   const kayitsizHisseler = kaydiOlmayanHisseler(portfoy, islemGecmisi);
 
@@ -552,55 +567,15 @@ function App() {
 
             {/*Portföy çizgi grafiği. */}
             {portfoySembolleri !== '' && (
-              <div className="bg-slate-900 p-6 rounded-xl border border-slate-700 mb-8 shadow-inner">
-                <div className="flex flex-wrap justify-between items-start gap-2 mb-4">
-                  <div>
-                    <h4 className="text-slate-300 font-medium">Portföy Değeri</h4>
-                    <p className="text-xs text-slate-500 mt-1">Her tarih o tarihteki lotlarla hesaplanır. Alım ve satımlar yapıldığı andan itibaren yansır.</p>
-                  </div>
-                  <div className="flex gap-1">
-                    {GRAFIK_DONEMLERI.map((secenek) => (
-                      <button
-                        key={secenek.kod}
-                        onClick={() => setPortfoyDonemi(secenek.kod)}
-                        className={`px-2 py-1 rounded text-xs font-medium transition ${portfoyDonemi === secenek.kod ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
-                      >
-                        {secenek.ad}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="h-64 w-full rounded-lg border border-slate-700 overflow-hidden relative">
-                  {portfoyGrafikYukleniyor ? (
-                    <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
-                      Grafik Yükleniyor...
-                    </div>
-                  ) : portfoyGrafikSerisi.length > 0 ? (
-                    <TradingViewChart
-                      data={portfoyGrafikSerisi}
-                      tip="cizgi"
-                      saatGoster={GRAFIK_DONEMLERI.find(d => d.kod === portfoyDonemi).gunIci}
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
-                      {portfoyGrafikSonucu.veri.length > 0 ? 'Bu dönemde portföyde hisse yok.' : 'Grafik verisi alınamadı.'}
-                    </div>
-                  )}
-                </div>
-
-                {!portfoyGrafikYukleniyor && grafikteOlmayanHisseler.length > 0 && (
-                  <p className="text-xs text-amber-300 mt-2">
-                    Geçmiş verisi alınamadığı için grafiğe dahil edilmedi: {grafikteOlmayanHisseler.join(', ')}
-                  </p>
-                )}
-
-                {!portfoyGrafikYukleniyor && kayitsizHisseler.length > 0 && (
-                  <p className="text-xs text-amber-300 mt-2">
-                    Alım kaydı olmadığı için geçmişe yazılmadı, yalnızca son noktada sayıldı: {kayitsizHisseler.join(', ')}
-                  </p>
-                )}
-              </div>
+              <PortfoyGrafigi
+                analiz={portfoyAnalizi}
+                seri={portfoyGrafikSerisi}
+                yukleniyor={portfoyGrafikYukleniyor}
+                donemler={GRAFIK_DONEMLERI}
+                donem={portfoyDonemi}
+                donemDegistir={setPortfoyDonemi}
+                kayitsizHisseler={kayitsizHisseler}
+              />
             )}
 
             {portfoy.length > 0 && (
