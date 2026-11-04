@@ -1,12 +1,11 @@
-// Portföy özet kartları ile portföy değeri / maliyet grafiği.
+// Portföy özet kartları ile kâr/zarar ve portföy değeri grafiği.
 // Grafik, hisse grafikleriyle aynı görünsün diye Lightweight Charts ile çizilir.
 import { useEffect, useRef, useState } from 'react';
-import { createChart, LineStyle, LineType } from 'lightweight-charts';
+import { createChart, LineStyle } from 'lightweight-charts';
 import { toplamKarZarar } from './portfoy';
 
 const YESIL = '#34d399';
 const KIRMIZI = '#f87171';
-const MALIYET_RENGI = 'rgba(251, 191, 36, 0.7)';
 
 const tl = (tutar) => `${tutar.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`;
 const isaretliTl = (tutar) => `${tutar > 0 ? '+' : ''}${tl(tutar)}`;
@@ -43,7 +42,6 @@ const PortfoyCizelgesi = ({ seri, karGorunumu, saatGoster }) => {
   const kapsayiciRef = useRef(null);
   const chartRef = useRef(null);
   const anaSeriRef = useRef(null);
-  const maliyetSeriRef = useRef(null);
   const sigdirildiRef = useRef(false);
   const [imlec, setImlec] = useState(null);
 
@@ -65,23 +63,11 @@ const PortfoyCizelgesi = ({ seri, karGorunumu, saatGoster }) => {
     if (karGorunumu) {
       // Sıfır çizgisi kâr ve zararı ayırır.
       anaSeriRef.current.createPriceLine({ price: 0, color: '#64748b', lineWidth: 1, lineStyle: LineStyle.Dashed, axisLabelVisible: false });
-      maliyetSeriRef.current = null;
-    } else {
-      // Maliyet yalnızca işlem günlerinde basamak yapar.
-      maliyetSeriRef.current = chart.addLineSeries({
-        color: MALIYET_RENGI,
-        lineWidth: 1,
-        lineStyle: LineStyle.Dashed,
-        lineType: LineType.WithSteps,
-        lastValueVisible: false,
-        priceLineVisible: false,
-        crosshairMarkerVisible: false,
-      });
     }
     chartRef.current = chart;
     sigdirildiRef.current = false;
 
-    // Bilgi kutusu için imlecin altındaki günün sırası tutulur. İki seride de her gün olduğu için sıra seriyle aynıdır.
+    // Bilgi kutusu için imlecin altındaki günün sırası tutulur. Serideki her gün grafikte olduğu için sıra seriyle aynıdır.
     chart.subscribeCrosshairMove((olay) => {
       setImlec(olay.point && olay.logical !== undefined ? { sira: olay.logical, x: olay.point.x, genislik: kapsayici.clientWidth } : null);
     });
@@ -101,16 +87,11 @@ const PortfoyCizelgesi = ({ seri, karGorunumu, saatGoster }) => {
   useEffect(() => {
     const anaDegerler = seri.map(gun => (karGorunumu ? toplamKarZarar(gun) : gun.portfolio_value));
     const sonDeger = anaDegerler[anaDegerler.length - 1];
-    // Renk dönem başına göre değil, kârda olup olmamaya göre belirlenir. Değer görünümünde sınır maliyet, kâr/zararda sıfırdır.
-    const yukseliste = sonDeger >= (karGorunumu ? 0 : seri[seri.length - 1].total_invested);
-    const noktalariGoster = seri.length <= 2;
+    //Değer görünümünde renk, seçilen aralığın ilk değerine göre belirlenir. Kâr/zararda sınır sıfırdır.
+    const yukseliste = sonDeger >= (karGorunumu ? 0 : anaDegerler[0]);
 
-    anaSeriRef.current.applyOptions({ color: yukseliste ? YESIL : KIRMIZI, pointMarkersVisible: noktalariGoster });
+    anaSeriRef.current.applyOptions({ color: yukseliste ? YESIL : KIRMIZI, pointMarkersVisible: seri.length <= 2 });
     anaSeriRef.current.setData(seri.map((gun, i) => ({ time: grafikZamani(gun.date), value: anaDegerler[i] })));
-    if (maliyetSeriRef.current) {
-      maliyetSeriRef.current.applyOptions({ pointMarkersVisible: noktalariGoster });
-      maliyetSeriRef.current.setData(seri.map(gun => ({ time: grafikZamani(gun.date), value: gun.total_invested })));
-    }
     // Canlı fiyat güncellemesinde kullanıcının yakınlaştırması bozulmasın diye yalnızca ilk çizimde sığdırılır.
     if (!sigdirildiRef.current) {
       chartRef.current.timeScale().fitContent();
@@ -143,6 +124,7 @@ const PortfoyCizelgesi = ({ seri, karGorunumu, saatGoster }) => {
 const PortfoyGrafigi = ({ analiz, seri, yukleniyor, donemler, donem, donemDegistir, kayitsizHisseler }) => {
   // Varsayılan Kâr/Zarar: alımlar ekseni büyütmediği için günlük fiyat hareketleri görünür.
   const [gorunum, setGorunum] = useState('kar');
+  // Değer görünümü tek çizgidir; maliyet bilgisi özet kartında ve bilgi kutusunda kalır.
   const karGorunumu = gorunum === 'kar';
   const ozet = analiz?.summary;
   const reddedilenler = analiz?.warnings.rejected_sales ?? [];
@@ -167,11 +149,11 @@ const PortfoyGrafigi = ({ analiz, seri, yukleniyor, donemler, donem, donemDegist
 
       <div className="flex flex-wrap justify-between items-start gap-2 mb-4">
         <div>
-          <h4 className="text-slate-300 font-medium">{karGorunumu ? 'Toplam Kâr / Zarar' : 'Portföy Değeri ve Maliyet'}</h4>
+          <h4 className="text-slate-300 font-medium">{karGorunumu ? 'Toplam Kâr / Zarar' : 'Portföy Değeri'}</h4>
           <p className="text-xs text-slate-500 mt-1">
             {karGorunumu
               ? 'Açık ve gerçekleşen kârın toplamı. Alım ve satımlar çizgiyi sıçratmaz, çizgiyi fiyat hareketleri belirler.'
-              : 'Alım ve satımlar iki çizgiyi birlikte hareket ettirir. Aradaki fark açık kâr/zarardır.'}
+              : 'Portföyün piyasa değeri. Alım ve satımlar değeri doğrudan değiştirir, kârı Kâr/Zarar görünümü gösterir.'}
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -198,13 +180,6 @@ const PortfoyGrafigi = ({ analiz, seri, yukleniyor, donemler, donem, donemDegist
           <Mesaj>{analiz ? 'Bu dönemde portföyde hisse yok.' : 'Grafik verisi alınamadı.'}</Mesaj>
         )}
       </div>
-
-      {!karGorunumu && (
-        <div className="flex gap-4 mt-3 text-xs text-slate-400">
-          <span className="flex items-center gap-2"><span className="w-4 border-t-2 border-emerald-400" />Portföy Değeri</span>
-          <span className="flex items-center gap-2"><span className="w-4 border-t-2 border-dashed border-amber-400" />Toplam Maliyet</span>
-        </div>
-      )}
 
       {!yukleniyor && eksikFiyatlar.length > 0 && (
         <p className="text-xs text-amber-300 mt-2">

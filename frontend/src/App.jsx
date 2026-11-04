@@ -32,7 +32,6 @@ import {
   tutarCoz,
   yeterliBakiyeVarMi,
 } from './portfoy';
-//Özet kartları ve maliyet çizgili yeni portföy grafiği.
 import PortfoyGrafigi from './PortfoyGrafigi';
 
 // Grafikte dönem seçimi eklendi.
