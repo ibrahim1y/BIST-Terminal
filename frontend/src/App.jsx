@@ -1,7 +1,6 @@
 // React kütüphanesini içe aktarma
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createChart } from 'lightweight-charts'; 
-import {PieChart, Pie,Cell, Tooltip, ResponsiveContainer, Legend} from 'recharts';
 //Al/sat ve kâr/zarar hesapları portfoy.js dosyasından gelir.
 import {
   alimUygula,
@@ -12,10 +11,24 @@ import {
   // Kapalı günler grafikten çıkarılır.
   kapaliGunleriCikar,
   bakiyeHesapla,
+  // Kâr/Zarar grafiğini üst şeritle aynı döneme bağlar.
+  donemKarSerisi,
+  donemBasinaKadarDoldur,
+  // Seçili hissenin dönem değişimi.
+  donemDegisimi,
+  // Yeni sayfa düzeninin yardımcıları.
+  enFazlaLot,
+  isaretliTl,
+  isaretliYuzde,
+  karRengi,
+  tl,
   gecerliIslemKaydi,
   gecerliNakitKaydi,
   gecerliPortfoyKaydi,
   gerceklesenKarZarar,
+  // Grafiklerin parlak yeşil ve kırmızısı tek yerden gelir.
+  GRAFIK_KIRMIZI,
+  GRAFIK_YESIL,
   grafikSembolleri,
   islemKaydi,
   kaydiOlmayanHisseler,
@@ -24,15 +37,15 @@ import {
   lotMiktariniCoz,
   nakitHareketi,
   paraYatir,
-  pastaRengi,
   portfoyOzeti,
   satimUygula,
   sonFiyatBul,
-  toplamGerceklesenKarZarar,
   tutarCoz,
   yeterliBakiyeVarMi,
 } from './portfoy';
+import PortfoyDagilimi from './PortfoyDagilimi';
 import PortfoyGrafigi from './PortfoyGrafigi';
+import PortfoyOzetSeridi from './PortfoyOzetSeridi';
 
 // Grafikte dönem seçimi eklendi.
 const GRAFIK_DONEMLERI = [
@@ -59,7 +72,7 @@ const TradingViewChart = ({ data, tip, saatGoster }) => {
     //Kanvas oluşumu
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: 'solid', color: '#0f172a' },
+        background: { type: 'solid', color: '#000000' },
         textColor: '#94a3b8',
       },
       grid: {
@@ -68,8 +81,9 @@ const TradingViewChart = ({ data, tip, saatGoster }) => {
       },
       width: chartContainerRef.current.clientWidth || 450,
       height: chartContainerRef.current.clientHeight || 250,
+      rightPriceScale: { borderColor: '#ffffff' },
       timeScale: {
-        borderColor: '#475569',
+        borderColor: '#ffffff',
         timeVisible: saatGoster,
         secondsVisible: false,
       },
@@ -80,11 +94,11 @@ const TradingViewChart = ({ data, tip, saatGoster }) => {
     } else {
       //Yeşil ve kırmızı mumları oluşturma.
       seriRef.current = chart.addCandlestickSeries({
-        upColor: '#34d399',
-        downColor: '#f87171',
+        upColor: GRAFIK_YESIL,
+        downColor: GRAFIK_KIRMIZI,
         borderVisible: false,
-        wickUpColor: '#34d399',
-        wickDownColor: '#f87171',
+        wickUpColor: GRAFIK_YESIL,
+        wickDownColor: GRAFIK_KIRMIZI,
       });
     }
     chartRef.current = chart;
@@ -135,7 +149,7 @@ const TradingViewChart = ({ data, tip, saatGoster }) => {
         //Çizgi grafik kapanış fiyatlarını kullanır, dönem başına göre yeşil veya kırmızı olur.
         const yukseliste = temizVeri[temizVeri.length - 1].close >= temizVeri[0].close;
         //Tek nokta çizgi olarak görünmediği için az veride noktalar da gösterilir.
-        seriRef.current.applyOptions({ color: yukseliste ? '#34d399' : '#f87171', pointMarkersVisible: temizVeri.length <= 2 });
+        seriRef.current.applyOptions({ color: yukseliste ? GRAFIK_YESIL : GRAFIK_KIRMIZI, pointMarkersVisible: temizVeri.length <= 2 });
         seriRef.current.setData(temizVeri.map(d => ({ time: d.time, value: d.close })));
       } else {
         seriRef.current.setData(temizVeri);
@@ -154,7 +168,8 @@ const TradingViewChart = ({ data, tip, saatGoster }) => {
 };
 
 function App() {
-  const [aktifSekme, setAktifSekme] = useState('piyasa'); 
+  // Uygulama portföy sekmesiyle açılır.
+  const [aktifSekme, setAktifSekme] = useState('portfoy'); 
   const [hisseler, setHisseler] = useState([]);
   //Piyasa verisi alınmamasını bu state kontrol edecek.
   const [piyasaHatasi, setPiyasaHatasi] = useState(false);
@@ -172,8 +187,12 @@ function App() {
   const [portfoyDonemi, setPortfoyDonemi] = useState('3a');
   // Tüm geçmiş tek seferde geldiği için dönem sonuçta tutulmaz, seri ekranda kesilir.
   // 1G gün içi seri kullandığı için sonucun hangi seri türüne ait olduğu da tutulur.
-  const [portfoyGrafikSonucu, setPortfoyGrafikSonucu] = useState({ semboller: null, gunIci: false, veri: null });
-  const portfoyGunIci = portfoyDonemi === '1g';
+  const [portfoyGrafikSonucu, setPortfoyGrafikSonucu] = useState({ semboller: null, anahtar: null, veri: null });
+  // 5Y dışındaki dönemler gün içi sıklıkta ayrı ayrı çekilir, 5Y günlük geçmişten kesilir.
+  const portfoyGunIci = portfoyDonemi !== '5y';
+  const portfoyVeriAnahtari = portfoyGunIci ? portfoyDonemi : 'gunluk';
+  // Özet şeridindeki dönem kâr/zararının verisi.
+  const [donemKariVerisi, setDonemKariVerisi] = useState(null);
 
   // 1. Portföy başlatılırken önce localStorage kontrol edilir.
   // Eğer kayıtlı veri varsa JSON.parse ile okunur.
@@ -200,6 +219,8 @@ function App() {
   //Nakit hareketleri saklanır, bakiye bunlardan hesaplanır.
   const [nakitHareketleri, setNakitHareketleri] = useState(() => kayitliListeyiOku('bist_nakit_hareketleri', gecerliNakitKaydi));
   const [yatirilacakTutar, setYatirilacakTutar] = useState('');
+  // Para yatırma alanı üst menüden açılır.
+  const [paraPaneliAcik, setParaPaneliAcik] = useState(false);
   const nakitBakiye = bakiyeHesapla(nakitHareketleri);
 
   useEffect(() => {
@@ -229,6 +250,8 @@ function App() {
         setHisseler(data);
         //Gelen fiyatlar sonFiyatlar state'ine işlenir.
         setSonFiyatlar(onceki => ({ ...onceki, ...Object.fromEntries(data.map(h => [h.sembol, h.fiyat])) }));
+        // Piyasa sayfasındaki panel boş kalmasın diye ilk hisse seçili gelir.
+        setSeciliHisse(onceki => onceki ?? data[0]);
         setPiyasaHatasi(false);
       })
       .catch(error => {
@@ -272,15 +295,15 @@ function App() {
   useEffect(() => {
     if (aktifSekme === 'portfoy' && portfoySembolleri !== '') {
       const semboller = portfoySembolleri;
-      const gunIci = portfoyGunIci;
+      const anahtar = portfoyVeriAnahtari;
       // İşlemler tarayıcıda tutulduğu için analiz isteğinin gövdesinde gönderilir.
       const govde = JSON.stringify(analizIslemleri(islemGecmisi));
       let iptal = false;
       //Yenileme başarısız olursa eldeki grafik silinmez.
       const sonucuYaz = (veri) => setPortfoyGrafikSonucu(onceki => (
-        veri === null && onceki.semboller === semboller && onceki.gunIci === gunIci ? onceki : { semboller, gunIci, veri }
+        veri === null && onceki.semboller === semboller && onceki.anahtar === anahtar ? onceki : { semboller, anahtar, veri }
       ));
-      const veriyiGetir = () => fetch(`http://127.0.0.1:8000/api/portfoy-analiz${gunIci ? '/gun-ici' : ''}`, {
+      const veriyiGetir = () => fetch(`http://127.0.0.1:8000/api/portfoy-analiz${anahtar === 'gunluk' ? '' : `/gun-ici?donem=${anahtar}`}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: govde,
@@ -304,9 +327,37 @@ function App() {
         clearInterval(intervalId);
       };
     }
-  }, [aktifSekme, portfoySembolleri, islemGecmisi, portfoyGunIci]);
+  }, [aktifSekme, portfoySembolleri, islemGecmisi, portfoyVeriAnahtari]);
 
-  const filtrelenmisHisseler = hisseler.filter(hisse => 
+  // İşlem değişince ve dakikada bir yenilenir. Yenileme başarısız olursa eldeki değer silinmez.
+  useEffect(() => {
+    if (aktifSekme === 'portfoy') {
+      const govde = JSON.stringify(analizIslemleri(islemGecmisi));
+      let iptal = false;
+      const veriyiGetir = () => fetch('http://127.0.0.1:8000/api/portfoy-donem-kari', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: govde,
+      })
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
+        .then(data => {
+          if (!iptal) setDonemKariVerisi(data);
+        })
+        .catch(error => console.error('Dönem kârı alınamadı:', error));
+
+      veriyiGetir();
+      const intervalId = setInterval(veriyiGetir, 60000);
+      return () => {
+        iptal = true;
+        clearInterval(intervalId);
+      };
+    }
+  }, [aktifSekme, islemGecmisi]);
+
+  const filtrelenmisHisseler = hisseler.filter(hisse =>
     hisse.sembol.toLowerCase().includes(aramaMetni.toLowerCase()) || 
     hisse.ad.toLowerCase().includes(aramaMetni.toLowerCase())
   );
@@ -314,11 +365,25 @@ function App() {
   // Seçilen hissenin fiyatının güncel piyasadan okunması için yeni bir değişken. Öncesinde modal açıkken değer güncellenmiyordu. 
   const seciliFiyat = hisseler.find(h => h.sembol === seciliHisse?.sembol)?.fiyat ?? seciliHisse?.fiyat;
 
-  const modalKapat = () => {
-    setSeciliHisse(null);
+  // Pencere kalktığı için işlemden sonra hisse seçili kalır, yalnızca form temizlenir.
+  const islemFormunuTemizle = () => {
     setLotMiktari('');
     setIslemTipi('AL');
   };
+
+  const hisseSec = (hisse) => {
+    setSeciliHisse(hisse);
+    setLotMiktari('');
+  };
+
+  const eldekiLot = portfoy.find(p => p.sembol === seciliHisse?.sembol)?.lot ?? 0;
+  const seciliDegisim = hisseler.find(h => h.sembol === seciliHisse?.sembol)?.degisim ?? seciliHisse?.degisim ?? 0;
+  // Seçili hisse dönem değişimini gösterir. 1G önceki kapanışa göre günlük değişimdir, grafik yüklenirken değer gösterilmez.
+  const grafikHazir = grafikSonucu.sembol === seciliHisse?.sembol && grafikSonucu.donem === grafikDonemi;
+  const seciliDonemDegisimi = grafikDonemi === '1g' ? seciliDegisim : (grafikHazir ? donemDegisimi(grafikSonucu.veri, seciliFiyat) : null);
+  const seciliDonemAdi = GRAFIK_DONEMLERI.find(d => d.kod === grafikDonemi).ad;
+  const degisimYaz = (degisim) => (degisim === null ? '—' : isaretliYuzde(degisim));
+  const degisimRengi = (degisim) => (degisim === null ? 'text-slate-400' : karRengi(degisim));
 
   //Geçici para yatırma işlemi; banka uygulaması bağlanınca kaldırılabilir.
   const paraYatirOnayla = () => {
@@ -326,6 +391,7 @@ function App() {
     if (tutar === null) return alert('Lütfen en fazla iki ondalıklı, pozitif bir tutar girin.');
     setNakitHareketleri(paraYatir(nakitHareketleri, tutar));
     setYatirilacakTutar('');
+    setParaPaneliAcik(false);
   };
 
   const islemOnayla = () => {
@@ -370,7 +436,7 @@ function App() {
       setIslemGecmisi([{ ...yeniIslemKaydi, karZarar: gerceklesenKarZarar(satilanHisse, seciliFiyat, miktar) }, ...islemGecmisi])
       alert(`${miktar} lot ${seciliHisse.sembol} başarıyla satıldı!`);
     }
-    modalKapat();
+    islemFormunuTemizle();
   };
 
   //Portföy değeri otomatik olarak güncellenir.
@@ -379,9 +445,7 @@ function App() {
   const eskiFiyatSayisi = portfoy.filter(fiyatEskiMi).length;
 
   //Toplamlar portfoyOzeti fonksiyonundan geliyor.
-  const { toplamPortfoyDegeri, toplamKarZarar, toplamKarZararYuzde } = portfoyOzeti(portfoy, sonFiyatlar);
-  //Gerçekleşen kâr/zarar işlem geçmişinden hesaplanır.
-  const gerceklesenToplam = toplamGerceklesenKarZarar(islemGecmisi);
+  const { toplamPortfoyDegeri, toplamMaliyet } = portfoyOzeti(portfoy, sonFiyatlar);
 
   //Pasta grafiği eklendi.
   const pastaGrafikVerisi = portfoy.map(item => {
@@ -398,231 +462,315 @@ function App() {
     [portfoyGrafikSonucu.veri, sonFiyatlar]
   );
   const portfoyGrafikSerisi = useMemo(
-    () => kapaliGunleriCikar(seriyiDonemeGoreKes(portfoyAnalizi?.series ?? [], portfoyDonemi)),
-    [portfoyAnalizi, portfoyDonemi]
+    () => {
+      // 5Y'de ilk alımdan önceki kısım sıfırla doldurulur, gün içi dönemlerde bunu backend yapar.
+      const seri = portfoyGunIci ? (portfoyAnalizi?.series ?? []) : donemBasinaKadarDoldur(kapaliGunleriCikar(seriyiDonemeGoreKes(portfoyAnalizi?.series ?? [], portfoyDonemi)), portfoyDonemi);
+      const pozisyonlar = donemKariVerisi?.periods[portfoyDonemi];
+      return pozisyonlar ? donemKarSerisi(seri, pozisyonlar) : seri;
+    },
+    [portfoyAnalizi, portfoyDonemi, portfoyGunIci, donemKariVerisi]
   );
-  const portfoyGrafikYukleniyor = portfoyGrafikSonucu.semboller !== portfoySembolleri || portfoyGrafikSonucu.gunIci !== portfoyGunIci;
+  const portfoyGrafikYukleniyor = portfoyGrafikSonucu.semboller !== portfoySembolleri || portfoyGrafikSonucu.anahtar !== portfoyVeriAnahtari;
   //Alım kaydı olmayan lotlar için uyarı gösterilir.
   const kayitsizHisseler = kaydiOlmayanHisseler(portfoy, islemGecmisi);
 
+  const sekmeStili = (sekme) => `h-full px-3 sm:px-4 font-medium whitespace-nowrap border-b-[3px] transition ${aktifSekme === sekme ? 'text-emerald-400 border-emerald-400' : 'text-slate-300 border-transparent hover:text-white'}`;
+
   // Site şablonları ve arayüzü oluşturuldu.
+  // Tema: siyah arka plan ve beyaz çerçeveler. Tablo satır ayraçları kalabalık olmasın diye soluk beyazdır.
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans relative">
-      <nav className="border-b border-slate-700 bg-slate-800/50 px-6 py-4 flex justify-between items-center sticky top-0 backdrop-blur-sm z-10">
-        <h1 className="text-2xl font-bold text-emerald-400 tracking-wide cursor-pointer" onClick={() => setAktifSekme('piyasa')}>
+    <div className="min-h-screen bg-black text-slate-100 font-sans relative">
+      {/* Sekmeler altı çizili, nakit bakiye ve para yatırma her sayfada sağ üstte. */}
+      <nav className="border-b border-white bg-black px-4 sm:px-7 py-3 lg:py-0 lg:h-16 flex flex-wrap items-center gap-x-7 gap-y-2 sticky top-0 z-20">
+        <h1 className="text-2xl font-bold text-emerald-400 tracking-wide cursor-pointer" onClick={() => setAktifSekme('portfoy')}>
           BIST100 <span className="text-white font-medium text-lg">Terminal</span>
         </h1>
-        <div className="space-x-4 flex items-center">
-          <button 
-            onClick={() => setAktifSekme('piyasa')}
-            className={`font-medium transition ${aktifSekme === 'piyasa' ? 'text-emerald-400' : 'text-slate-300 hover:text-white'}`}
-          >
-            Piyasa
-          </button>
-          <button 
-            onClick={() => setAktifSekme('portfoy')}
-            className={`font-medium transition px-4 py-2 rounded-lg ${aktifSekme === 'portfoy' ? 'bg-slate-700 text-emerald-400' : 'text-slate-300 hover:text-white hover:bg-slate-800'}`}
-          >
-            Portföyüm ({portfoy.length})
-          </button>
+        <div className="order-3 lg:order-none w-full lg:w-auto h-10 lg:h-full flex">
+          <button onClick={() => setAktifSekme('portfoy')} className={sekmeStili('portfoy')}>Portföyüm ({portfoy.length})</button>
+          <button onClick={() => setAktifSekme('piyasa')} className={sekmeStili('piyasa')}>Piyasa</button>
+          <button onClick={() => setAktifSekme('gecmis')} className={sekmeStili('gecmis')}>İşlem Geçmişi</button>
+        </div>
+        <div className="ml-auto flex items-center gap-3 relative">
+          <div className="text-right">
+            <p className="text-slate-400 text-xs">Nakit Bakiye</p>
+            <p className="font-bold text-white whitespace-nowrap">{tl(nakitBakiye)}</p>
+          </div>
           <button
-            onClick={() => setAktifSekme('gecmis')}
-            className={`font-medium transition px-4 py-2 rounded-lg ${aktifSekme === 'gecmis' ? 'bg-slate-700 text-emerald-400' : 'text-slate-300 hover:text-white hover:bg-slate-800'}`}
+            onClick={() => setParaPaneliAcik(!paraPaneliAcik)}
+            aria-expanded={paraPaneliAcik}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap"
           >
-            İşlem Geçmişi
+            Para Yatır
           </button>
+          {/*Nakit bakiye ve geçici para yatırma alanı. */}
+          {paraPaneliAcik && (
+            <div className="acilir-gecis absolute right-0 top-full mt-3 w-72 bg-black border border-white rounded-xl p-4 space-y-2">
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  autoFocus
+                  value={yatirilacakTutar}
+                  onChange={(e) => setYatirilacakTutar(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') paraYatirOnayla(); }}
+                  placeholder="Tutar"
+                  aria-label="Yatırılacak tutar"
+                  className="min-w-0 flex-1 bg-black border border-white rounded-lg px-3 py-2 text-white focus:outline-none focus:border-emerald-500 transition"
+                />
+                <button
+                  onClick={paraYatirOnayla}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium transition"
+                >
+                  Yatır
+                </button>
+              </div>
+              <p className="text-xs text-slate-500">Simülasyon: gerçek para değildir.</p>
+            </div>
+          )}
         </div>
       </nav>
 
-      <main className="p-6 max-w-7xl mx-auto space-y-6">
+      {/* key sayesinde her sekme değişiminde perde yeniden açılır. Tıklamaları engellemez. */}
+      <div key={aktifSekme} className="perde-gecisi fixed inset-0 z-10 bg-black pointer-events-none" aria-hidden="true" />
+      <main className="p-4 sm:p-7 max-w-[1400px] mx-auto space-y-5">
+        {/* Solda hisse listesi, sağda grafik ve al/sat paneli. Açılır pencerenin yerini aldı. */}
         {aktifSekme === 'piyasa' && (
-          <section className="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-sm">
-            <div className="border-b border-slate-700 pb-4 mb-4 flex justify-between items-center">
-              <h3 className="text-lg font-medium">BIST Hisseleri ({hisseler.length})</h3>
-              <input 
-                type="text" 
-                placeholder="Hisse Ara..." 
-                value={aramaMetni}
-                onChange={(e) => setAramaMetni(e.target.value)}
-                className="bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-emerald-500 w-64"
-              />
-            </div>
-
-            {piyasaHatasi && hisseler.length > 0 && (
-              <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-300">
-                Veriler güncellenemedi, son alınan fiyatlar gösteriliyor.
+          <div className="grid gap-5 items-start lg:grid-cols-[minmax(0,1.1fr)_minmax(380px,1fr)]">
+            <section className="min-w-0 bg-black rounded-xl border border-white">
+              <div className="p-5 flex flex-wrap gap-3 justify-between items-center">
+                <h3 className="font-medium">BIST Hisseleri ({hisseler.length})</h3>
+                <input
+                  type="text"
+                  placeholder="Hisse Ara..."
+                  value={aramaMetni}
+                  onChange={(e) => setAramaMetni(e.target.value)}
+                  className="bg-black border border-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 w-52"
+                />
               </div>
-            )}
-            
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-700 text-slate-400 text-sm">
-                    <th className="pb-3 pl-2">Sembol</th>
-                    <th className="pb-3 text-right">Fiyat (₺)</th>
-                    <th className="pb-3 text-right">Değişim</th>
-                    <th className="pb-3 text-center">İşlem & Grafik</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtrelenmisHisseler.map((hisse) => (
-                    <tr key={hisse.id} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition">
-                      <td className="py-4 pl-2 font-bold text-emerald-400">{hisse.sembol}</td>
-                      <td className="py-4 text-right font-medium">{hisse.fiyat.toFixed(2)}</td>
-                      <td className={`py-4 text-right font-medium ${hisse.degisim >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                        {hisse.degisim > 0 ? '+' : ''}{hisse.degisim}%
-                      </td>
-                      <td className="py-4 text-center">
-                        <button 
-                          onClick={() => setSeciliHisse(hisse)}
-                          className="bg-slate-700 hover:bg-emerald-600 text-white px-3 py-1 rounded text-sm transition"
-                        >
-                          İncele / Al
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {filtrelenmisHisseler.length === 0 && (
-                <div className="text-center py-8 text-slate-500">
-                  {hisseler.length > 0
-                    ? 'Aramanızla eşleşen hisse bulunamadı.'
-                    : piyasaHatasi
-                      ? 'Piyasa verileri alınamadı. Yeniden deneniyor...'
-                      : 'Piyasa Verileri Yükleniyor...'}
+
+              {piyasaHatasi && hisseler.length > 0 && (
+                <div className="mx-5 mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-300">
+                  Veriler güncellenemedi, son alınan fiyatlar gösteriliyor.
                 </div>
               )}
-            </div>
-          </section>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-white text-slate-400 text-sm">
+                      <th className="py-3 pl-5 font-medium">Sembol</th>
+                      <th className="py-3 text-right font-medium">Fiyat (₺)</th>
+                      <th className="py-3 pr-5 text-right font-medium">Değişim</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtrelenmisHisseler.map((hisse) => (
+                      <tr
+                        key={hisse.id}
+                        onClick={() => hisseSec(hisse)}
+                        className={`border-b border-white/20 cursor-pointer transition ${seciliHisse?.sembol === hisse.sembol ? 'bg-slate-700/40' : 'hover:bg-slate-700/30'}`}
+                      >
+                        <td className="py-3 pl-5 font-bold text-emerald-400">
+                          <button aria-pressed={seciliHisse?.sembol === hisse.sembol}>{hisse.sembol}</button>
+                        </td>
+                        <td className="py-3 text-right font-medium">{hisse.fiyat.toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                        {seciliHisse?.sembol === hisse.sembol ? (
+                          <td className={`py-3 pr-5 text-right font-medium ${degisimRengi(seciliDonemDegisimi)}`}>
+                            <span className="mr-2 text-xs font-normal text-slate-400">{seciliDonemAdi}</span>
+                            {degisimYaz(seciliDonemDegisimi)}
+                          </td>
+                        ) : (
+                          <td className={`py-3 pr-5 text-right font-medium ${karRengi(hisse.degisim)}`}>{isaretliYuzde(hisse.degisim)}</td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {filtrelenmisHisseler.length === 0 && (
+                  <div className="text-center py-8 text-slate-500">
+                    {hisseler.length > 0
+                      ? 'Aramanızla eşleşen hisse bulunamadı.'
+                      : piyasaHatasi
+                        ? 'Piyasa verileri alınamadı. Yeniden deneniyor...'
+                        : 'Piyasa Verileri Yükleniyor...'}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            {seciliHisse && (
+              // Panel ekran yüksekliğine sığar, grafik kalan alanı doldurur. Emir düğmesine ulaşmak için kaydırma gerekmez.
+              <section className="order-first lg:order-none min-w-0 bg-black rounded-xl border border-white lg:sticky lg:top-20 lg:flex lg:flex-col lg:h-[calc(100vh-6rem)] lg:max-h-[52rem] lg:overflow-y-auto">
+                <div className="p-4 pb-2 shrink-0">
+                  <div className="flex flex-wrap justify-between items-start gap-2 mb-2">
+                    <div>
+                      <h3 className="text-xl font-bold text-white">{seciliHisse.sembol}</h3>
+                      {/* Panelde fiyat güncel kalır. */}
+                      <p className={`text-sm font-medium ${degisimRengi(seciliDonemDegisimi)}`}>{tl(seciliFiyat)} · {seciliDonemAdi} {degisimYaz(seciliDonemDegisimi)}</p>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => setGrafikTipi('mum')}
+                        className={`px-2 py-1 rounded text-xs font-medium transition ${grafikTipi === 'mum' ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                      >
+                        Mum
+                      </button>
+                      <button
+                        onClick={() => setGrafikTipi('cizgi')}
+                        className={`px-2 py-1 rounded text-xs font-medium transition ${grafikTipi === 'cizgi' ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                      >
+                        Çizgi
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    {GRAFIK_DONEMLERI.map((secenek) => (
+                      <button
+                        key={secenek.kod}
+                        onClick={() => setGrafikDonemi(secenek.kod)}
+                        className={`px-2 py-1 rounded text-xs font-medium transition ${grafikDonemi === secenek.kod ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                      >
+                        {secenek.ad}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="h-64 lg:h-auto lg:flex-1 lg:min-h-36 w-full px-2 overflow-hidden relative">
+                    {/* Grafik için yükleniyor ve veri yok durumları ayrıldı. */}
+                    {grafikSonucu.sembol !== seciliHisse.sembol || grafikSonucu.donem !== grafikDonemi ? (
+                        <div className="icerik-gecisi w-full h-full flex items-center justify-center text-slate-500 text-sm">
+                            Grafik Yükleniyor...
+                        </div>
+                    ) : grafikSonucu.veri.length > 0 ? (
+                        <div className="icerik-gecisi w-full h-full">
+                          <TradingViewChart
+                            data={grafikSonucu.veri}
+                            tip={grafikTipi}
+                            saatGoster={GRAFIK_DONEMLERI.find(d => d.kod === grafikDonemi).gunIci}
+                          />
+                        </div>
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
+                            Grafik verisi alınamadı.
+                        </div>
+                    )}
+                </div>
+
+                <div className="p-4 border-t border-white/20 space-y-2.5 shrink-0">
+                  <div className="flex gap-2">
+                    <button
+                      className={`flex-1 py-2 rounded-lg font-medium transition ${islemTipi === 'AL' ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                      onClick={() => setIslemTipi('AL')}
+                    >
+                      ALIŞ
+                    </button>
+                    <button
+                      className={`flex-1 py-2 rounded-lg font-medium transition ${islemTipi === 'SAT' ? 'bg-red-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                      onClick={() => setIslemTipi('SAT')}
+                    >
+                      SATIŞ
+                    </button>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={lotMiktari}
+                      onChange={(e) => setLotMiktari(e.target.value)}
+                      aria-label="Lot miktarı"
+                      className="min-w-0 flex-1 bg-black border border-white rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500 transition"
+                      placeholder="Lot miktarı"
+                    />
+                    <button
+                      onClick={() => setLotMiktari(String(enFazlaLot(islemTipi, nakitBakiye, seciliFiyat, eldekiLot)))}
+                      className="bg-slate-700 hover:bg-slate-600 text-white px-3 rounded-lg text-sm transition whitespace-nowrap"
+                    >
+                      En fazla
+                    </button>
+                  </div>
+
+                  {/*İşlem panelinde nakit bakiye gösterilecek.*/}
+                  <div className="flex flex-wrap justify-between gap-x-4 gap-y-1 text-sm">
+                    <span><span className="text-slate-400">Nakit </span><span className="font-medium text-slate-200">{tl(nakitBakiye)}</span></span>
+                    <span><span className="text-slate-400">Portföydeki Lot </span><span className="font-medium text-slate-200">{eldekiLot}</span></span>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-slate-400">Toplam Tutar</span>
+                    <span className="text-lg font-bold text-white">
+                      {lotMiktariniCoz(lotMiktari) ? tl(seciliFiyat * lotMiktariniCoz(lotMiktari)) : tl(0)}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={islemOnayla}
+                    className={`w-full py-3 rounded-lg font-bold transition ${islemTipi === 'AL' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-red-600 hover:bg-red-500'}`}
+                  >
+                    {islemTipi === 'AL' ? 'ALIŞ EMRİ GÖNDER' : 'SATIŞ EMRİ GÖNDER'}
+                  </button>
+                </div>
+              </section>
+            )}
+          </div>
         )}
 
+        {/* Dış çerçeve kalktı. Özet tek şeritte, grafik ve dağılım yan yana. */}
         {aktifSekme === 'portfoy' && (
-          <section className="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-sm">
+          <>
              {eskiFiyatSayisi > 0 && (
-               <div className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-300">
+               <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-300">
                  {hisseler.length === 0 && !piyasaHatasi
                    ? 'Güncel fiyatlar yükleniyor, son alınan fiyatlar gösteriliyor.'
                    : `${eskiFiyatSayisi} hisse güncel fiyat yerine son alınan fiyatla hesaplandı.`}
                </div>
              )}
-             {/*Nakit bakiye ve geçici para yatırma alanı. */}
-             <div className="mb-4 bg-slate-900 p-5 rounded-xl border border-slate-700 flex flex-col md:flex-row md:items-center justify-between gap-4">
-               <div>
-                 <p className="text-slate-400 text-sm mb-1">Nakit Bakiye</p>
-                 <p className="text-3xl font-bold text-white">
-                   {nakitBakiye.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺
-                 </p>
-               </div>
-               <div className="flex flex-col items-stretch md:items-end gap-2">
-                 <div className="flex gap-2">
-                   <input
-                     type="number"
-                     min="0.01"
-                     step="0.01"
-                     value={yatirilacakTutar}
-                     onChange={(e) => setYatirilacakTutar(e.target.value)}
-                     placeholder="Tutar"
-                     className="flex-1 md:w-40 bg-slate-800 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500 transition"
-                   />
-                   <button
-                     onClick={paraYatirOnayla}
-                     className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium transition"
-                   >
-                     Para Yatır
-                   </button>
-                 </div>
-                 <p className="text-xs text-slate-500">Simülasyon: gerçek para değildir.</p>
-               </div>
-             </div>
-             {/*Dört kart için ızgara düzeni değişti. */}
-             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
-                  <div className="bg-slate-900 p-5 rounded-xl border border-slate-700 flex flex-col justify-center">
-                    <p className="text-slate-400 text-sm mb-1">Toplam Portföy</p>
-                    <p className="text-3xl font-bold text-white">
-                      {toplamPortfoyDegeri.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺
-                    </p>
-                  </div>
-                  <div className="bg-slate-900 p-5 rounded-xl border border-slate-700 flex flex-col justify-center">
-                    {/*Kart başlığı açık pozisyonları belirtir. */}
-                    <p className="text-slate-400 text-sm mb-1">Açık Pozisyon Kâr / Zarar</p>
-                    <p className={`text-3xl font-bold ${toplamKarZarar >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {toplamKarZarar > 0 ? '+' : ''}{toplamKarZarar.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺
-                    </p>
-                  </div>
-                  <div className="bg-slate-900 p-5 rounded-xl border border-slate-700 flex flex-col justify-center">
-                    <p className="text-slate-400 text-sm mb-1">Açık Pozisyon Getirisi</p>
-                    <p className={`text-3xl font-bold ${toplamKarZararYuzde >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {toplamKarZararYuzde > 0 ? '+' : ''}{toplamKarZararYuzde.toFixed(2)}%
-                    </p>
-                  </div>
-                  {/*Satışlardan oluşan gerçekleşen kâr/zarar kartı. */}
-                  <div className="bg-slate-900 p-5 rounded-xl border border-slate-700 flex flex-col justify-center">
-                    <p className="text-slate-400 text-sm mb-1">Gerçekleşen Kâr / Zarar</p>
-                    <p className={`text-3xl font-bold ${gerceklesenToplam >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {gerceklesenToplam > 0 ? '+' : ''}{gerceklesenToplam.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺
-                    </p>
-                  </div>
+
+            <PortfoyOzetSeridi
+              portfoyDegeri={toplamPortfoyDegeri}
+              toplamMaliyet={toplamMaliyet}
+              donemler={GRAFIK_DONEMLERI}
+              donemKariVerisi={donemKariVerisi}
+              sonFiyatlar={sonFiyatlar}
+            />
+
+            <div className={`grid gap-5 ${pastaGrafikVerisi.length > 0 ? 'lg:grid-cols-[minmax(0,2.3fr)_minmax(280px,1fr)]' : ''}`}>
+              {/*Portföy çizgi grafiği. */}
+              {portfoySembolleri !== '' && (
+                <PortfoyGrafigi
+                  analiz={portfoyAnalizi}
+                  seri={portfoyGrafikSerisi}
+                  yukleniyor={portfoyGrafikYukleniyor}
+                  donemKariHazir={donemKariVerisi !== null}
+                  donemler={GRAFIK_DONEMLERI}
+                  donem={portfoyDonemi}
+                  donemDegistir={setPortfoyDonemi}
+                  kayitsizHisseler={kayitsizHisseler}
+                />
+              )}
+
+              {pastaGrafikVerisi.length > 0 && <PortfoyDagilimi veri={pastaGrafikVerisi} />}
             </div>
 
-
-            {/*Portföy çizgi grafiği. */}
-            {portfoySembolleri !== '' && (
-              <PortfoyGrafigi
-                analiz={portfoyAnalizi}
-                seri={portfoyGrafikSerisi}
-                yukleniyor={portfoyGrafikYukleniyor}
-                donemler={GRAFIK_DONEMLERI}
-                donem={portfoyDonemi}
-                donemDegistir={setPortfoyDonemi}
-                kayitsizHisseler={kayitsizHisseler}
-              />
-            )}
-
-            {portfoy.length > 0 && (
-              <div className={`bg-slate-900 p-6 rounded-xl border border-slate-700 mb-8 ${pastaGrafikVerisi.length > 10 ? 'h-[28rem]' : 'h-80'} flex flex-col justify-center items-center shadow-inner`}>
-                <h4 className="text-slate-300 font-medium mb-4 w-full text-left">Portföy Dağılımı</h4>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={pastaGrafikVerisi}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={70}
-                      outerRadius={100}
-                      paddingAngle={Math.min(5, 120 / pastaGrafikVerisi.length)}
-                      dataKey="value"
-                      stroke="none"
-                    >
-                      {pastaGrafikVerisi.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={pastaRengi(index)} />
-                      ))}
-                    </Pie>
-                    <Tooltip 
-                      formatter={(value) => `${value.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺`}
-                      contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f8fafc', borderRadius: '0.5rem' }}
-                      itemStyle={{ color: '#e2e8f0' }}
-                    />
-                    <Legend verticalAlign="bottom" height={pastaGrafikVerisi.length > 10 ? 90 : 36} iconType="circle" wrapperStyle={{ paddingTop: '20px', overflowY: pastaGrafikVerisi.length > 10 ? 'auto' : 'visible' }}/>
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            )}
-
-            
-            {portfoy.length === 0 ? (
-              <div className="text-center py-8 text-slate-500">Portföyünüzde hisse bulunmuyor.</div>
-            ) : (
+            <section className="bg-black rounded-xl border border-white">
+              <h3 className="font-medium p-5 pb-3">Hisselerim</h3>
+              {portfoy.length === 0 ? (
+                <div className="text-center pb-8 pt-3 text-slate-500">Portföyünüzde hisse bulunmuyor.</div>
+              ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
+                  <table className="w-full text-left border-collapse whitespace-nowrap">
                     <thead>
-                      <tr className="border-b border-slate-700 text-slate-400 text-sm">
-                        <th className="pb-3 pl-2">Sembol</th>
-                        <th className="pb-3 text-right">Maliyet</th>
-                        <th className="pb-3 text-right">Güncel</th>
-                        <th className="pb-3 text-right">Lot</th>
-                        <th className="pb-3 text-right">Kâr/Zarar</th>
-                        <th className="pb-3 text-center">İşlem</th>
+                      <tr className="border-b border-white text-slate-400 text-sm">
+                        <th className="py-3 pl-5 pr-4 font-medium">Sembol</th>
+                        <th className="py-3 px-4 text-right font-medium">Lot</th>
+                        <th className="py-3 px-4 text-right font-medium">Maliyet</th>
+                        <th className="py-3 px-4 text-right font-medium">Güncel</th>
+                        <th className="py-3 px-4 text-right font-medium">Değer</th>
+                        <th className="py-3 px-4 text-right font-medium">Kâr/Zarar</th>
+                        <th className="py-3 pl-4 pr-5 text-right font-medium">İşlem</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -633,20 +781,21 @@ function App() {
                         const { karZarar, karZararYuzde } = karZararHesapla(item, guncelFiyat);
 
                         return (
-                          <tr key={index} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition">
-                            <td className="py-4 pl-2 font-bold text-emerald-400">{item.sembol}</td>
-                            <td className="py-4 text-right">{item.maliyet.toFixed(2)} ₺</td>
-                            <td className="py-4 text-right">
-                              {guncelFiyat.toFixed(2)} ₺
+                          <tr key={index} className="border-b border-white/20 last:border-b-0 hover:bg-slate-700/30 transition">
+                            <td className="py-3 pl-5 pr-4 font-bold text-emerald-400">{item.sembol}</td>
+                            <td className="py-3 px-4 text-right text-slate-300 font-medium">{item.lot}</td>
+                            <td className="py-3 px-4 text-right">{tl(item.maliyet)}</td>
+                            <td className="py-3 px-4 text-right">
+                              {tl(guncelFiyat)}
                               {fiyatEskiMi(item) && <span className="ml-2 text-xs text-amber-300">son veri</span>}
                             </td>
-                            <td className="py-4 text-right text-slate-300 font-medium">{item.lot}</td>
-                            <td className={`py-4 text-right font-medium ${karZarar >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                              {karZarar > 0 ? '+' : ''}{karZarar.toFixed(2)} ₺ ({karZararYuzde.toFixed(2)}%)
+                            <td className="py-3 px-4 text-right">{tl(guncelFiyat * item.lot)}</td>
+                            <td className={`py-3 px-4 text-right font-medium ${karRengi(karZarar)}`}>
+                              {isaretliTl(karZarar)} ({isaretliYuzde(karZararYuzde)})
                             </td>
-                            <td className="py-4 text-center">
+                            <td className="py-3 pl-4 pr-5 text-right">
                               <button
-                                onClick={() => { setSeciliHisse(guncelVeri); setIslemTipi('SAT'); }}
+                                onClick={() => { hisseSec(guncelVeri); setIslemTipi('SAT'); setAktifSekme('piyasa'); }}
                                 disabled={!guncelVeri}
                                 title={guncelVeri ? undefined : 'Güncel fiyat alınamadı'}
                                 className="bg-slate-700 hover:bg-red-600 text-white px-3 py-1 rounded text-sm transition disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-700"
@@ -660,13 +809,14 @@ function App() {
                     </tbody>
                   </table>
                 </div>
-            )}
-          </section>
+              )}
+            </section>
+          </>
         )}
-      
+
         {aktifSekme === 'gecmis' && (
-          <section className="bg-slate-800 rounded-xl p-6 border border-slate-700 shadow-sm">
-            <h3 className="text-lg font-medium border-b border-slate-700 pb-4 mb-4">İşlem Kayıtları (Trade Logs)</h3>
+          <section className="bg-black rounded-xl p-6 border border-white shadow-sm">
+            <h3 className="text-lg font-medium border-b border-white pb-4 mb-4">İşlem Kayıtları (Trade Logs)</h3>
 
             
             {islemGecmisi.length === 0 ? (
@@ -675,7 +825,7 @@ function App() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-700 text-slate-400 text-sm">
+                    <tr className="border-b border-white text-slate-400 text-sm">
                       <th className="pb-3 pl-2">Tarih / Saat</th>
                       <th className="pb-3 text-center">İşlem</th>
                       <th className="pb-3">Sembol</th>
@@ -688,7 +838,7 @@ function App() {
                   </thead>
                   <tbody>
                     {islemGecmisi.map((islem) => (
-                      <tr key={islem.id} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition">
+                      <tr key={islem.id} className="border-b border-white/20 hover:bg-slate-700/30 transition">
                         <td className="py-4 pl-2 text-sm text-slate-300">{islem.tarih}</td>
                         <td className="py-4 text-center">
                           <span className={`px-2 py-1 text-xs font-bold rounded ${islem.tip === 'AL' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
@@ -716,14 +866,14 @@ function App() {
             )}
 
             {/*Nakit hareketleri tablosu. */}
-            <h3 className="text-lg font-medium border-b border-slate-700 pb-4 mb-4 mt-8">Nakit Hareketleri</h3>
+            <h3 className="text-lg font-medium border-b border-white pb-4 mb-4 mt-8">Nakit Hareketleri</h3>
             {nakitHareketleri.length === 0 ? (
               <div className="text-center py-8 text-slate-500">Henüz nakit hareketi yok.</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-700 text-slate-400 text-sm">
+                    <tr className="border-b border-white text-slate-400 text-sm">
                       <th className="pb-3 pl-2">Tarih / Saat</th>
                       <th className="pb-3">Tür</th>
                       <th className="pb-3">Açıklama</th>
@@ -732,7 +882,7 @@ function App() {
                   </thead>
                   <tbody>
                     {nakitHareketleri.map((hareket) => (
-                      <tr key={hareket.id} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition">
+                      <tr key={hareket.id} className="border-b border-white/20 hover:bg-slate-700/30 transition">
                         <td className="py-4 pl-2 text-sm text-slate-300">{hareket.tarih}</td>
                         <td className="py-4 text-sm">{hareket.tip}</td>
                         <td className="py-4 text-sm text-slate-300">{hareket.aciklama}</td>
@@ -748,122 +898,6 @@ function App() {
           </section>
         )}
       </main>
-
-      {seciliHisse && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-[36rem] max-h-[90vh] overflow-y-auto shadow-2xl">
-            
-            <div className="flex justify-between items-center mb-6">
-              <div>
-                <h3 className="text-xl font-bold text-white">{seciliHisse.sembol}</h3>
-                {/* Pencere açıkken fiyat güncellenir. */}
-                <p className="text-sm text-slate-400">Son Fiyat: {seciliFiyat.toFixed(2)} ₺</p>
-              </div>
-              <button onClick={modalKapat} className="text-slate-400 hover:text-white text-2xl leading-none">&times;</button>
-            </div>
-
-            <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
-              <div className="flex gap-1">
-                {GRAFIK_DONEMLERI.map((secenek) => (
-                  <button
-                    key={secenek.kod}
-                    onClick={() => setGrafikDonemi(secenek.kod)}
-                    className={`px-2 py-1 rounded text-xs font-medium transition ${grafikDonemi === secenek.kod ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
-                  >
-                    {secenek.ad}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setGrafikTipi('mum')}
-                  className={`px-2 py-1 rounded text-xs font-medium transition ${grafikTipi === 'mum' ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
-                >
-                  Mum
-                </button>
-                <button
-                  onClick={() => setGrafikTipi('cizgi')}
-                  className={`px-2 py-1 rounded text-xs font-medium transition ${grafikTipi === 'cizgi' ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
-                >
-                  Çizgi
-                </button>
-              </div>
-            </div>
-
-            <div className="h-64 w-full bg-slate-900 rounded-lg mb-6 border border-slate-700 overflow-hidden relative">
-                {/* Grafik için yükleniyor ve veri yok durumları ayrıldı. */}
-                {grafikSonucu.sembol !== seciliHisse.sembol || grafikSonucu.donem !== grafikDonemi ? (
-                    <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
-                        Grafik Yükleniyor...
-                    </div>
-                ) : grafikSonucu.veri.length > 0 ? (
-                    <TradingViewChart
-                      data={grafikSonucu.veri}
-                      tip={grafikTipi}
-                      saatGoster={GRAFIK_DONEMLERI.find(d => d.kod === grafikDonemi).gunIci}
-                    />
-                ) : (
-                    <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
-                        Grafik verisi alınamadı.
-                    </div>
-                )}
-            </div>
-
-            <div className="flex gap-2 mb-6">
-              <button
-                className={`flex-1 py-2 rounded-lg font-medium transition ${islemTipi === 'AL' ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
-                onClick={() => setIslemTipi('AL')}
-              >
-                ALIŞ
-              </button>
-              <button
-                className={`flex-1 py-2 rounded-lg font-medium transition ${islemTipi === 'SAT' ? 'bg-red-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
-                onClick={() => setIslemTipi('SAT')}
-              >
-                SATIŞ
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm text-slate-400 mb-1">Lot Miktarı</label>
-                <input
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={lotMiktari}
-                  onChange={(e) => setLotMiktari(e.target.value)}
-                  className="w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-emerald-500 transition"
-                  placeholder="0"
-                />
-              </div>
-
-              {/*İşlem penceresinde nakit bakiye gösterilecek.*/}
-              <div className="flex justify-between items-center pt-2">
-                <span className="text-sm text-slate-400">Nakit Bakiye:</span>
-                <span className="text-sm font-medium text-slate-200">
-                  {nakitBakiye.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺
-                </span>
-              </div>
-
-              <div className="flex justify-between items-center pt-2">
-                <span className="text-sm text-slate-400">Toplam Tutar:</span>
-                <span className="text-xl font-bold text-white">
-                  {lotMiktariniCoz(lotMiktari) ? (seciliFiyat * lotMiktariniCoz(lotMiktari)).toLocaleString('tr-TR', {minimumFractionDigits: 2}) : '0,00'} ₺
-                </span>
-              </div>
-
-              <button 
-                onClick={islemOnayla}
-                className={`w-full py-3 rounded-lg font-bold transition mt-2 ${islemTipi === 'AL' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-red-600 hover:bg-red-500'}`}
-              >
-                {islemTipi === 'AL' ? 'ALIŞ EMRİ GÖNDER' : 'SATIŞ EMRİ GÖNDER'}
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
     </div>
   )
 }

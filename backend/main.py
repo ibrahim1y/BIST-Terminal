@@ -6,7 +6,7 @@ import time
 import yfinance as yf
 # Portföy analizi endpoint'i için eklendi.
 from typing import Any
-from portfoy_analiz import FiyatVerisiHatasi, IslemHatasi, portfoy_analizi, portfoy_gun_ici_analizi
+from portfoy_analiz import DONEM_SIKLIKLARI, FiyatVerisiHatasi, IslemHatasi, portfoy_analizi, portfoy_donem_kari, portfoy_gun_ici_analizi, kapanis_kolonu, seans_tablosu
 
 app = FastAPI()
 
@@ -40,13 +40,17 @@ hisseler_kilit = threading.Lock()
 # Yahoo'dan veri çeken kısım ayrı fonksiyona alındı.
 def hisseleri_cek():
     tickers = " ".join([f"{h}.IS" for h in BIST_HISSELER])
-    data = yf.download(tickers, period="5d", progress=False)
+    # Günlük veri yerine saatlik veri kullanılır, seçili güne denk gelen eksik satır değişimi bozmaz.
+    # Günlük kapanış önceliklidir, seans sonu fiyatını doğru verir.
+    saatlik = yf.download(tickers, period="5d", interval="1h", auto_adjust=False, progress=False)
+    gunluk = yf.download(tickers, period="5d", interval="1d", auto_adjust=False, progress=False)
+    seanslar = seans_tablosu(kapanis_kolonu(saatlik), kapanis_kolonu(gunluk))
     
     hisseler_listesi = []
     for i, sembol in enumerate(BIST_HISSELER):
         sembol_is = f"{sembol}.IS"
         try:
-            kapanislar = data['Close'][sembol_is].dropna()
+            kapanislar = seanslar[sembol_is].dropna()
             
             if len(kapanislar) >= 2:
                 son_fiyat = float(kapanislar.iloc[-1])
@@ -132,13 +136,26 @@ def post_portfoy_analiz(islemler: list[dict[str, Any]]):
         raise HTTPException(status_code=503, detail="Fiyat verisi alınamadı")
 
 
-#Portföy grafiğinin 1G görünümü için son seansın 5 dakikalık serisini döner.
+# donem parametresiyle 1G-1Y arası dönemler gün içi sıklıkta döner.
 @app.post("/api/portfoy-analiz/gun-ici")
-def post_portfoy_gun_ici_analiz(islemler: list[dict[str, Any]]):
+def post_portfoy_gun_ici_analiz(islemler: list[dict[str, Any]], donem: str = "1g"):
+    if donem not in DONEM_SIKLIKLARI:
+        raise HTTPException(status_code=400, detail="Geçersiz dönem")
     try:
-        return portfoy_gun_ici_analizi(islemler)
+        return portfoy_gun_ici_analizi(islemler, donem)
     except IslemHatasi as e:
         raise HTTPException(status_code=400, detail=str(e))
     except FiyatVerisiHatasi as e:
         print(f"HATA - portföy gün içi fiyatları çekilemedi: {e}")
+        raise HTTPException(status_code=503, detail="Fiyat verisi alınamadı")
+
+# Özet şeridindeki 1G-5Y kâr/zararı için elde kalan lotların dönem başı referanslarını döner.
+@app.post("/api/portfoy-donem-kari")
+def post_portfoy_donem_kari(islemler: list[dict[str, Any]]):
+    try:
+        return portfoy_donem_kari(islemler)
+    except IslemHatasi as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FiyatVerisiHatasi as e:
+        print(f"HATA - portföy dönem kârı fiyatları çekilemedi: {e}")
         raise HTTPException(status_code=503, detail="Fiyat verisi alınamadı")

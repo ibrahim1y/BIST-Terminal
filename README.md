@@ -5,9 +5,10 @@ Borsa İstanbul hisselerini izlemek ve sanal alım-satım yapmak için bir web u
 ## Özellikler
 
 - Hisse listesi, arama ve günlük değişim
-- Son 3 ayın mum grafiği
+- Mum ve çizgi hisse grafikleri, 1G'den 5Y'ye dönem seçimi
 - Sanal alım-satım ve ağırlıklı ortalama maliyet
 - Portföy özeti, açık ve gerçekleşen kâr/zarar, dağılım grafiği
+- Portföy grafiği: toplam kâr/zarar ve portföy değeri görünümleri
 - Nakit bakiye ve simülasyon amaçlı para yatırma
 - İşlem geçmişi ve nakit hareketleri
 - Veri alınamadığında son alınan fiyatlarla çalışma
@@ -15,7 +16,7 @@ Borsa İstanbul hisselerini izlemek ve sanal alım-satım yapmak için bir web u
 ## Teknolojiler
 
 - **Frontend:** React, Vite, Tailwind CSS, Lightweight Charts, Recharts
-- **Backend:** FastAPI, yfinance
+- **Backend:** FastAPI, yfinance, pandas
 
 ## Kurulum
 
@@ -83,9 +84,10 @@ python -m unittest
 | Uç | Açıklama |
 |---|---|
 | `GET /api/hisseler` | Hisse listesi, fiyat ve günlük değişim (30 saniye önbellekli) |
-| `GET /api/grafik/{sembol}` | Hissenin son 3 aylık günlük mum verisi |
-| `POST /api/portfoy-analiz/gun-ici` | Aynı analiz, seri olarak son seansın 5 dakikalık noktaları |
+| `GET /api/grafik/{sembol}` | Hissenin mum verisi. `donem` parametresi: `1g`, `1h`, `1a`, `3a`, `1y`, `5y` (varsayılan `3a`) |
 | `POST /api/portfoy-analiz` | İşlem geçmişinden ağırlıklı ortalama maliyet, açık ve gerçekleşen kâr ile günlük zaman serisi |
+| `POST /api/portfoy-analiz/gun-ici` | Aynı analiz, gün içi seriyle. `donem`: `1g` (2 dakikalık), `1h`, `1a`, `3a`, `1y` (saatlik) |
+| `POST /api/portfoy-donem-kari` | Elde kalan lotların 1G-5Y dönem başı referansları, satılan lotlar hariç |
 
 ## Notlar
 

@@ -60,10 +60,6 @@ export const karZararHesapla = (item, fiyat) => ({
 //Bir satışın gerçekleşen kâr/zararını ortalama maliyete göre hesaplayacak.
 export const gerceklesenKarZarar = (item, satisFiyati, miktar) => (satisFiyati - item.maliyet) * miktar;
 
-//Geçmişteki gerçekleşen kâr/zararları toplar; bilgisi olmayan kayıtlar atlanır.
-export const toplamGerceklesenKarZarar = (islemGecmisi) =>
-  islemGecmisi.reduce((toplam, islem) => toplam + (Number.isFinite(islem.karZarar) ? islem.karZarar : 0), 0);
-
 //İşlem kaydı App.jsx'ten buraya taşındı.
 export const islemKaydi = (tip, sembol, lot, fiyat, zaman = new Date()) => ({
   id: zaman.getTime(),
@@ -167,6 +163,9 @@ export const analiziCanlandir = (analiz, sonFiyatlar) => {
     portfolio_value,
     unrealized_pnl: kurusaYuvarla(acikKar),
     unrealized_return_pct: sonGun.total_invested > 0 ? kurusaYuvarla((acikKar / sonGun.total_invested) * 100) : 0,
+    // Bugünkü lotların hepsi elde kalan lot olduğu için canlı değer bu hesapta da geçerlidir.
+    held_pnl: kurusaYuvarla(portfolio_value - sonGun.held_invested),
+    held_return_pct: sonGun.held_invested > 0 ? kurusaYuvarla(((portfolio_value - sonGun.held_invested) / sonGun.held_invested) * 100) : 0,
   };
   return { ...analiz, summary: guncelGun, series: [...analiz.series.slice(0, -1), guncelGun] };
 };
@@ -190,5 +189,69 @@ export const kapaliGunleriCikar = (seri) => seri.filter((nokta, i) => {
     || nokta.realized_pnl !== onceki.realized_pnl;
 });
 
-// Açık ve gerçekleşen kârın toplamı. Alım ve satım bu toplamı sıçratmaz, yalnızca fiyat hareketi değiştirir.
-export const toplamKarZarar = (nokta) => kurusaYuvarla(nokta.unrealized_pnl + nokta.realized_pnl);
+
+// Siyah arka planda belirgin görünen grafik renkleri.
+export const GRAFIK_YESIL = '#00ff5e';
+export const GRAFIK_KIRMIZI = '#ff1f1f';
+
+// Para ve kâr/zarar gösterimi bütün sayfalarda aynı olsun diye tek yerde tutulur.
+export const tl = (tutar) => `${tutar.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₺`;
+export const isaretliTl = (tutar) => `${tutar > 0 ? '+' : ''}${tl(tutar)}`;
+export const isaretliYuzde = (yuzde) => `${yuzde > 0 ? '+' : ''}${yuzde.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+export const karRengi = (tutar) => (tutar >= 0 ? 'text-emerald-400' : 'text-red-400');
+
+// "En fazla" düğmesi: alışta bakiyenin yettiği, satışta eldeki lot sayısı.
+export const enFazlaLot = (islemTipi, nakitBakiye, fiyat, eldekiLot) => {
+  if (islemTipi === 'SAT') return eldekiLot;
+  return fiyat > 0 && nakitBakiye > 0 ? Math.floor(nakitBakiye / fiyat) : 0;
+};
+
+// Seçilen dönemin ilk kapanışına göre yüzde değişim. Veri yoksa null döner.
+export const donemDegisimi = (veri, fiyat) => {
+  const ilk = veri[0]?.close;
+  return ilk > 0 && Number.isFinite(fiyat) ? kurusaYuvarla(((fiyat - ilk) / ilk) * 100) : null;
+};
+
+// Dönem kâr/zararı: elde kalan lotların bugünkü değeri eksi dönem başı referansı. Satılan lotlar bu hesaba girmez.
+export const donemKari = (pozisyonlar, sonFiyatlar, sonKapanislar = {}) => {
+  let deger = 0;
+  let referans = 0;
+  for (const { ticker, lots, reference } of pozisyonlar) {
+    const fiyat = sonFiyatlar[ticker.replace(/\.IS$/, '')] ?? sonKapanislar[ticker];
+    deger += lots * (fiyat ?? reference / lots);
+    referans += reference;
+  }
+  const tutar = kurusaYuvarla(deger - referans);
+  return { tutar, yuzde: referans > 0 ? kurusaYuvarla(((deger - referans) / referans) * 100) : 0 };
+};
+
+// Kâr/Zarar grafiğini üstteki dönem kârıyla aynı başlangıca çeker. Son nokta şeritle aynı olur.
+// Fark sabittir: dönem başı referansı eksi elde kalan lotların maliyeti. Dönem başında çizgi sıfırdan başlar.
+export const donemKarSerisi = (seri, pozisyonlar) => {
+  if (seri.length === 0) return seri;
+  const referans = pozisyonlar.reduce((toplam, p) => toplam + p.reference, 0);
+  const fark = referans - seri[seri.length - 1].held_invested;
+  return seri.map(nokta => {
+    const donem_kari = kurusaYuvarla(nokta.held_pnl - fark);
+    return { ...nokta, donem_kari, donem_getiri: referans > 0 ? kurusaYuvarla((donem_kari / referans) * 100) : 0 };
+  });
+};
+
+// Günlük seri ilk alımdan başlar. 5Y grafiğinin dönemin tamamını göstermesi için öncesi hafta içi günlerde sıfırla doldurulur.
+export const donemBasinaKadarDoldur = (seri, donem) => {
+  const gun = DONEM_GUNLERI[donem];
+  if (!gun || seri.length === 0) return seri;
+  const gunMs = 24 * 60 * 60 * 1000;
+  const ilk = Date.parse(seri[0].date);
+  const sifirlar = [];
+  for (let zaman = Date.parse(seri[seri.length - 1].date) - gun * gunMs; zaman < ilk; zaman += gunMs) {
+    const haftaGunu = new Date(zaman).getUTCDay();
+    if (haftaGunu === 0 || haftaGunu === 6) continue;
+    sifirlar.push({
+      date: new Date(zaman).toISOString().slice(0, 10),
+      portfolio_value: 0, total_invested: 0, unrealized_pnl: 0, unrealized_return_pct: 0, realized_pnl: 0,
+      held_invested: 0, held_pnl: 0, held_return_pct: 0,
+    });
+  }
+  return [...sifirlar, ...seri];
+};

@@ -4,8 +4,15 @@ import {
   analiziCanlandir,
   analizIslemleri,
   seriyiDonemeGoreKes,
+  donemDegisimi,
+  donemKari,
+  donemKarSerisi,
+  donemBasinaKadarDoldur,
+  enFazlaLot,
+  isaretliTl,
+  isaretliYuzde,
+  tl,
   kapaliGunleriCikar,
-  toplamKarZarar,
   bakiyeHesapla,
   gecerliIslemKaydi,
   gecerliNakitKaydi,
@@ -23,7 +30,6 @@ import {
   portfoyOzeti,
   satimUygula,
   sonFiyatBul,
-  toplamGerceklesenKarZarar,
   tutarCoz,
   yeterliBakiyeVarMi,
 } from './portfoy';
@@ -159,21 +165,6 @@ describe('gerceklesenKarZarar', () => {
   it('ek alım sonrası ağırlıklı ortalama maliyeti kullanır', () => {
     const portfoy = alimUygula([hisse('A', 2, 120)], { sembol: 'A' }, 2, 150);
     expect(gerceklesenKarZarar(portfoy[0], 145, 2)).toBe(20);
-  });
-});
-
-describe('toplamGerceklesenKarZarar', () => {
-  it('boş geçmişte sıfır döner', () => {
-    expect(toplamGerceklesenKarZarar([])).toBe(0);
-  });
-
-  it('kâr ve zararları toplar', () => {
-    expect(toplamGerceklesenKarZarar([{ karZarar: 40 }, { karZarar: -60 }, { karZarar: 5 }])).toBe(-15);
-  });
-
-  it('alımları, eski satışları ve geçersiz değerleri atlar', () => {
-    const gecmis = [{ tip: 'AL' }, { tip: 'SAT' }, { tip: 'SAT', karZarar: 'x' }, { tip: 'SAT', karZarar: null }, { tip: 'SAT', karZarar: 10 }];
-    expect(toplamGerceklesenKarZarar(gecmis)).toBe(10);
   });
 });
 
@@ -363,6 +354,9 @@ describe('analiziCanlandir', () => {
     unrealized_pnl: portfolio_value - 1000,
     unrealized_return_pct: (portfolio_value - 1000) / 10,
     realized_pnl: 50,
+    held_invested: 1000,
+    held_pnl: portfolio_value - 1000,
+    held_return_pct: (portfolio_value - 1000) / 10,
   });
   const analiz = {
     summary: gun('2026-10-02', 1100),
@@ -374,7 +368,7 @@ describe('analiziCanlandir', () => {
   it('yalnızca son günü ve özeti canlı fiyatla günceller', () => {
     const sonuc = analiziCanlandir(analiz, { A: 120 });
     expect(sonuc.series[0]).toEqual(analiz.series[0]);
-    expect(sonuc.series[1]).toEqual({ ...gun('2026-10-02', 1200), unrealized_pnl: 200, unrealized_return_pct: 20 });
+    expect(sonuc.series[1]).toEqual({ ...gun('2026-10-02', 1200), unrealized_pnl: 200, unrealized_return_pct: 20, held_pnl: 200, held_return_pct: 20 });
     expect(sonuc.summary).toEqual(sonuc.series[1]);
   });
 
@@ -445,10 +439,128 @@ describe('kapaliGunleriCikar', () => {
   });
 });
 
-// Kâr/Zarar görünümünün değeri.
-describe('toplamKarZarar', () => {
-  it('açık ve gerçekleşen kârı kuruşa yuvarlayarak toplar', () => {
-    expect(toplamKarZarar({ unrealized_pnl: 10.1, realized_pnl: 0.2 })).toBe(10.3);
-    expect(toplamKarZarar({ unrealized_pnl: -30, realized_pnl: 20 })).toBe(-10);
+// Para gösterimi ve "En fazla" düğmesi.
+describe('para gösterimi', () => {
+  it('tutarı Türkçe biçimde yazar', () => {
+    expect(tl(103027.5)).toBe('103.027,50 ₺');
+  });
+
+  it('pozitif değere artı ekler, sıfıra eklemez', () => {
+    expect(isaretliTl(10)).toBe('+10,00 ₺');
+    expect(isaretliTl(0)).toBe('0,00 ₺');
+    expect(isaretliTl(-10)).toBe('-10,00 ₺');
+    expect(isaretliYuzde(4.5)).toBe('+4,50%');
+    expect(isaretliYuzde(-1.32)).toBe('-1,32%');
+  });
+});
+
+describe('enFazlaLot', () => {
+  it('alışta bakiyenin yettiği tam lotu verir', () => {
+    expect(enFazlaLot('AL', 1000, 300, 0)).toBe(3);
+    expect(enFazlaLot('AL', 900, 300, 0)).toBe(3);
+    expect(enFazlaLot('AL', 100, 300, 0)).toBe(0);
+  });
+
+  it('satışta eldeki lotu verir', () => {
+    expect(enFazlaLot('SAT', 0, 300, 25)).toBe(25);
+    expect(enFazlaLot('SAT', 1000, 300, 0)).toBe(0);
+  });
+
+  it('fiyat veya bakiye geçersizse sıfır verir', () => {
+    expect(enFazlaLot('AL', 1000, 0, 0)).toBe(0);
+    expect(enFazlaLot('AL', -5, 300, 0)).toBe(0);
+  });
+});
+
+// Seçili hissenin dönem değişimi.
+describe('donemDegisimi', () => {
+  const veri = [{ close: 200 }, { close: 210 }];
+
+  it('ilk kapanışa göre yüzde değişimi kuruşa yuvarlar', () => {
+    expect(donemDegisimi(veri, 220)).toBe(10);
+    expect(donemDegisimi(veri, 190)).toBe(-5);
+    expect(donemDegisimi([{ close: 3 }], 4)).toBe(33.33);
+  });
+
+  it('veri veya fiyat yoksa null döner', () => {
+    expect(donemDegisimi([], 220)).toBeNull();
+    expect(donemDegisimi([{ close: 0 }], 220)).toBeNull();
+    expect(donemDegisimi(veri, undefined)).toBeNull();
+  });
+});
+
+// Özet şeridindeki dönem kâr/zararı.
+describe('donemKari', () => {
+  const pozisyonlar = [
+    { ticker: 'A.IS', lots: 10, reference: 1000 },
+    { ticker: 'B.IS', lots: 5, reference: 500 },
+  ];
+
+  it('elde kalan lotların canlı değerini referansla karşılaştırır', () => {
+    expect(donemKari(pozisyonlar, { A: 120, B: 90 })).toEqual({ tutar: 150, yuzde: 10 });
+  });
+
+  it('canlı fiyat yoksa son kapanışı kullanır', () => {
+    expect(donemKari(pozisyonlar, { A: 120 }, { 'B.IS': 110 })).toEqual({ tutar: 250, yuzde: 16.67 });
+  });
+
+  it('hiç fiyat yoksa o hisse kâr veya zarar yazmaz', () => {
+    expect(donemKari(pozisyonlar, { A: 100 })).toEqual({ tutar: 0, yuzde: 0 });
+  });
+
+  it('pozisyon yoksa sıfır döner', () => {
+    expect(donemKari([], { A: 120 })).toEqual({ tutar: 0, yuzde: 0 });
+  });
+});
+
+// Grafik ile üst şeridin aynı dönem başını kullanması.
+describe('donemKarSerisi', () => {
+  const nokta = (date, held_pnl, held_invested) => ({ date, held_pnl, held_invested });
+
+  it('son nokta üstteki dönem kârıyla aynı olur, dönem başı sıfırdır', () => {
+    const seri = [nokta('2026-10-01', 500, 1000), nokta('2026-10-02', 800, 1000)];
+    const pozisyonlar = [{ ticker: 'A.IS', lots: 10, reference: 1500 }];
+    const sonuc = donemKarSerisi(seri, pozisyonlar);
+    expect(sonuc.map(n => n.donem_kari)).toEqual([0, 300]);
+    expect(sonuc[1].donem_getiri).toBe(20);
+    expect(sonuc[1].donem_kari).toBe(donemKari(pozisyonlar, { A: 180 }).tutar);
+  });
+
+  it('dönem içinde alınan lot alış fiyatından başlar', () => {
+    const seri = [nokta('2026-10-01', 500, 1000), nokta('2026-10-02', 900, 1200)];
+    const pozisyonlar = [{ ticker: 'A.IS', lots: 12, reference: 1700 }];
+    expect(donemKarSerisi(seri, pozisyonlar).map(n => n.donem_kari)).toEqual([0, 400]);
+  });
+
+  it('bütün lotlar dönem içinde alındıysa toplam kâra eşit olur', () => {
+    const sonuc = donemKarSerisi([nokta('2026-10-02', 100, 1000)], [{ ticker: 'A.IS', lots: 10, reference: 1000 }]);
+    expect(sonuc[0].donem_kari).toBe(100);
+  });
+
+  it('seri boşsa veya elde lot yoksa çökmez', () => {
+    expect(donemKarSerisi([], [])).toEqual([]);
+    expect(donemKarSerisi([nokta('2026-10-02', 0, 0)], [])[0]).toMatchObject({ donem_kari: 0, donem_getiri: 0 });
+  });
+});
+
+// 5Y grafiğinin ilk alımdan önceki kısmı.
+describe('donemBasinaKadarDoldur', () => {
+  const nokta = (date) => ({ date, portfolio_value: 10, held_pnl: 1 });
+
+  it('dönem başından ilk alıma kadar hafta içi günleri sıfırla doldurur', () => {
+    const seri = [nokta('2026-01-08'), nokta('2026-01-10')];
+    const sonuc = donemBasinaKadarDoldur(seri, '1h');
+    expect(sonuc.map(n => n.date)).toEqual(['2026-01-05', '2026-01-06', '2026-01-07', '2026-01-08', '2026-01-10']);
+    expect(sonuc[0]).toMatchObject({ portfolio_value: 0, held_pnl: 0, held_invested: 0 });
+  });
+
+  it('seri dönem başından önce başlıyorsa dokunmaz', () => {
+    const seri = [nokta('2025-01-01'), nokta('2026-01-10')];
+    expect(donemBasinaKadarDoldur(seri, '1h')).toEqual(seri);
+  });
+
+  it('boş seride ve bilinmeyen dönemde çökmez', () => {
+    expect(donemBasinaKadarDoldur([], '5y')).toEqual([]);
+    expect(donemBasinaKadarDoldur([nokta('2026-01-10')], '1g')).toHaveLength(1);
   });
 });

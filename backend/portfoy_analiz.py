@@ -83,6 +83,31 @@ def islemleri_coz(kayitlar: list[dict[str, Any]]) -> list[Islem]:
     return sorted(islemler, key=lambda islem: islem.zaman)
 
 
+# Yahoo'nun günlük verisinde bazen bir gün eksik geliyor ve değişim yanlış güne göre hesaplanıyordu.
+# Bu yüzden günlük kapanış, saatlik verideki her seansın son fiyatından çıkarılır.
+def seans_kapanislari(saatlik_kapanislar: pd.DataFrame) -> pd.DataFrame:
+    """Saatlik fiyatlardan satır=seans günü, kolon=hisse olan son fiyat tablosu üretir."""
+    index = pd.DatetimeIndex(saatlik_kapanislar.index)
+    gunler = (index.tz_convert("Europe/Istanbul").tz_localize(None) if index.tz is not None else index).normalize()
+    return saatlik_kapanislar.groupby(gunler).last()
+
+
+# Saatlik veri seans sonundaki kapanışı içermez, günlük veri ise bazen bir günü atlar.
+# Bu yüzden günlük kapanış önceliklidir, eksik günler ve boş fiyatlar saatlik veriyle tamamlanır.
+def seans_tablosu(saatlik_kapanislar: pd.DataFrame, gunluk_kapanislar: pd.DataFrame) -> pd.DataFrame:
+    """Satır=seans günü, kolon=hisse olan birleşik kapanış tablosu üretir."""
+    saatlik = seans_kapanislari(saatlik_kapanislar) if not saatlik_kapanislar.empty else pd.DataFrame()
+    gunluk = gunluk_kapanislar
+    if not gunluk.empty:
+        index = pd.DatetimeIndex(gunluk.index)
+        gunluk = gunluk.set_axis((index.tz_localize(None) if index.tz is not None else index).normalize())
+    return gunluk.combine_first(saatlik).sort_index().dropna(how="all")
+
+
+def kapanis_kolonu(veri: pd.DataFrame) -> pd.DataFrame:
+    return veri["Close"] if not veri.empty else pd.DataFrame()
+
+
 def kapanislari_cek(tickers: list[str], baslangic: pd.Timestamp, bitis: pd.Timestamp) -> pd.DataFrame:
     """Günlük kapanışları satır=tarih, kolon=hisse biçiminde döner."""
     # auto_adjust=False: işlem fiyatlarıyla karşılaştırılacağı için temettü düzeltmesi yapılmamış kapanış kullanılır.
@@ -242,31 +267,101 @@ def portfoy_analizi(kayitlar: list[dict[str, Any]]) -> dict[str, Any]:
     if kapanislar.empty:
         raise FiyatVerisiHatasi("Yahoo Finance boş sonuç döndürdü")
 
-    return gunluk_seri_olustur(islemler, kapanislar, bugun)
+    sonuc = gunluk_seri_olustur(islemler, kapanislar, bugun)
+    kalanlar = elde_kalan_islemler(islemler)
+    return elde_kalan_seriyi_ekle(sonuc, gunluk_seri_olustur(kalanlar, kapanislar, bugun)["series"] if kalanlar else [])
 
 
-# 1G görünümü için gün içi seri. Hisse grafiğindeki 1G ile aynı aralık ve sıklık kullanılır.
+# Gün içi serinin varsayılan nokta süresi.
 GUN_ICI_ARALIK = pd.Timedelta(minutes=5)
 
 
-def gun_ici_fiyatlari_cek(tickers: list[str]) -> pd.DataFrame:
-    """Son seansın 5 dakikalık kapanışlarını İstanbul saatiyle döner."""
-    veri = yf.download(tickers, period="1d", interval="5m", auto_adjust=False, progress=False)
-    if veri.empty:
+# Portföy grafiği 5Y dışındaki dönemlerde gün içi veriyle çizilir. 1G iki dakikalık, 1H-1Y saatlik.
+# Saatlik veri seans sonu kapanışını içermediği için her güne 18:10'da günlük kapanış noktası eklenir.
+DONEM_SIKLIKLARI = {
+    "1g": ("2m", pd.Timedelta(minutes=2), None),
+    "1h": ("1h", pd.Timedelta(hours=1), 7),
+    "1a": ("1h", pd.Timedelta(hours=1), 30),
+    "3a": ("1h", pd.Timedelta(hours=1), 90),
+    "1y": ("1h", pd.Timedelta(hours=1), 365),
+}
+KAPANIS_SAATI = pd.Timedelta(hours=18, minutes=10)
+SUREKLI_ISLEM_SONU = pd.Timedelta(hours=18)
+
+
+def donem_fiyat_tablosu(
+    gun_ici_kapanislar: pd.DataFrame,
+    gunluk_kapanislar: pd.DataFrame,
+    baslangic_zamani: pd.Timestamp,
+    mum_suresi: pd.Timedelta = pd.Timedelta(0),
+) -> pd.DataFrame:
+    """Gün içi fiyatlarla günlük kapanışları tek zaman çizelgesinde birleştirir ve dönem başından keser.
+
+    Dönem başına, o ana kadarki son kapanışla bir nokta eklenir. Böylece grafik üstteki dönem kârıyla aynı yerden başlar.
+    """
+    parcalar = []
+    gun_ici = pd.DataFrame()
+    if not gun_ici_kapanislar.empty:
+        gun_ici = gun_ici_kapanislar.copy()
+        index = pd.DatetimeIndex(gun_ici.index)
+        index = index.tz_convert("Europe/Istanbul").tz_localize(None) if index.tz is not None else index
+        # Yahoo mumu başlangıç saatiyle etiketler, kapanış fiyatı ise mumun sonundadır.
+        # Nokta mumun bittiği ana taşınır, son mum sürekli işlemin bittiği 18:00'i geçmez.
+        bitis = index + mum_suresi
+        gun_ici.index = bitis.where(bitis <= bitis.normalize() + SUREKLI_ISLEM_SONU, bitis.normalize() + SUREKLI_ISLEM_SONU)
+        gun_ici = gun_ici[~gun_ici.index.duplicated(keep="last")]
+    if not gunluk_kapanislar.empty:
+        gunluk = gunluk_kapanislar.copy()
+        gunler = pd.DatetimeIndex(gunluk.index).normalize()
+        zamanlar = gunler + KAPANIS_SAATI
+        if not gun_ici.empty:
+            # Seans sürüyorsa bugünün günlük fiyatı 18:10'a değil, son gün içi noktanın yerine yazılır.
+            son_nokta = gun_ici.index.max()
+            if son_nokta - son_nokta.normalize() < SUREKLI_ISLEM_SONU:
+                zamanlar = zamanlar.where(gunler != son_nokta.normalize(), son_nokta)
+        gunluk.index = zamanlar
+        parcalar.insert(0, gunluk)
+    if not gun_ici.empty:
+        parcalar.append(gun_ici)
+    if not parcalar:
         return pd.DataFrame()
 
-    fiyatlar = veri["Close"]
-    if isinstance(fiyatlar, pd.Series):
-        fiyatlar = fiyatlar.to_frame(tickers[0])
-    fiyatlar = fiyatlar.dropna(axis=1, how="all")
-
-    index = pd.DatetimeIndex(fiyatlar.index)
-    fiyatlar.index = index.tz_convert("Europe/Istanbul").tz_localize(None) if index.tz is not None else index
-    return fiyatlar
+    # Aynı saatte iki fiyat varsa günlük kapanış önceliklidir.
+    fiyatlar = pd.concat(parcalar).sort_index(kind="stable")
+    fiyatlar = fiyatlar[~fiyatlar.index.duplicated(keep="first")]
+    fiyatlar = fiyatlar.reindex(fiyatlar.index.union([baslangic_zamani])).ffill()
+    return fiyatlar.loc[fiyatlar.index >= baslangic_zamani].dropna(how="all")
 
 
-def gun_ici_seri_olustur(islemler: list[Islem], fiyatlar: pd.DataFrame) -> dict[str, Any]:
-    """Her 5 dakikalık mum için o ana kadarki işlemlerle metrikleri hesaplar.
+def donem_fiyatlari_cek(tickers: list[str], donem: str, bugun: pd.Timestamp) -> tuple[pd.DataFrame, pd.Timedelta]:
+    """Dönemin fiyat tablosunu ve bir fiyat noktasının kapsadığı süreyi döner."""
+    aralik_kodu, mum_suresi, gun = DONEM_SIKLIKLARI[donem]
+    gunluk = kapanislari_cek(tickers, bugun - pd.Timedelta(days=gun or 10), bugun)
+    seanslar = gunluk.dropna(how="all").index
+    if donem == "1g":
+        # 1G dönem başı, üstteki dönem kârı gibi önceki seansın kapanışıdır.
+        oncekiler = seanslar[seanslar < seanslar[-1]] if len(seanslar) else seanslar
+        baslangic = oncekiler[-1] if len(oncekiler) else bugun - pd.Timedelta(days=1)
+    else:
+        baslangic = bugun - pd.Timedelta(days=gun)
+
+    veri = yf.download(
+        tickers,
+        start=baslangic.strftime("%Y-%m-%d"),
+        end=(bugun + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
+        interval=aralik_kodu,
+        auto_adjust=False,
+        progress=False,
+    )
+    gun_ici = kapanis_kolonu(veri)
+    if isinstance(gun_ici, pd.Series):
+        gun_ici = gun_ici.to_frame(tickers[0])
+    # Noktalar mumun bitişinde olduğu için bir işlem, noktanın zamanından önce yapıldıysa o noktada sayılır.
+    return donem_fiyat_tablosu(gun_ici, gunluk, baslangic + KAPANIS_SAATI, mum_suresi), pd.Timedelta(0)
+
+
+def gun_ici_seri_olustur(islemler: list[Islem], fiyatlar: pd.DataFrame, aralik: pd.Timedelta = GUN_ICI_ARALIK) -> dict[str, Any]:
+    """Her fiyat noktası için o ana kadarki işlemlerle metrikleri hesaplar.
 
     WAC ve gerçekleşen kâr, günlük hesapla aynı kalsın diye gunluk_seri_olustur ile bulunur.
     Fiyatsız çağrıda oradaki last_price son işlem fiyatıdır; fiyatı hiç alınamayan hisse için bu değer kullanılır.
@@ -307,14 +402,21 @@ def gun_ici_seri_olustur(islemler: list[Islem], fiyatlar: pd.DataFrame) -> dict[
 
     seri = []
     for zaman, satir in fiyatlar.iterrows():
-        # Mum içinde yapılan işlem o mumdan itibaren sayılır. İlk işlemden önceki mumlar seriye girmez.
-        islem_sayisi = bisect_left(zamanlar, zaman + GUN_ICI_ARALIK)
-        if islem_sayisi > 0:
-            seri.append(nokta_olustur(zaman, islem_sayisi, satir))
+        # Mum içinde yapılan işlem o mumdan itibaren sayılır.
+        islem_sayisi = bisect_left(zamanlar, zaman + aralik)
+        # İlk işlemden önceki noktalar sıfır olarak eklenir. Böylece grafik seçilen dönemin tamamını gösterir.
+        seri.append(nokta_olustur(zaman, islem_sayisi, satir) if islem_sayisi > 0 else {
+            "date": zaman.strftime("%Y-%m-%dT%H:%M:%S"),
+            "portfolio_value": 0.0,
+            "total_invested": 0.0,
+            "unrealized_pnl": 0.0,
+            "unrealized_return_pct": 0.0,
+            "realized_pnl": 0.0,
+        })
 
     # Seans kapandıktan sonra yapılan işlemler son mumda sayılmadığı için ayrı bir son nokta eklenir.
     son_satir = fiyatlar.iloc[-1]
-    if not seri or bisect_left(zamanlar, fiyatlar.index[-1] + GUN_ICI_ARALIK) < len(islemler):
+    if bisect_left(zamanlar, fiyatlar.index[-1] + aralik) < len(islemler):
         seri.append(nokta_olustur(zamanlar[-1], len(islemler), son_satir))
 
     son_durum = durum_bul(len(islemler))
@@ -335,17 +437,173 @@ def gun_ici_seri_olustur(islemler: list[Islem], fiyatlar: pd.DataFrame) -> dict[
     }
 
 
-def portfoy_gun_ici_analizi(kayitlar: list[dict[str, Any]]) -> dict[str, Any]:
-    """portfoy_analizi ile aynı biçimde, seri olarak son seansın 5 dakikalık noktalarını döner."""
+def portfoy_gun_ici_analizi(kayitlar: list[dict[str, Any]], donem: str = "1g") -> dict[str, Any]:
+    """portfoy_analizi ile aynı biçimde, seri olarak seçilen dönemin gün içi noktalarını döner."""
     islemler = islemleri_coz(kayitlar)
     if not islemler:
         return portfoy_analizi([])
 
     try:
-        fiyatlar = gun_ici_fiyatlari_cek(sorted({islem.ticker for islem in islemler}))
+        bugun = pd.Timestamp.now(tz="Europe/Istanbul").tz_localize(None).normalize()
+        fiyatlar, aralik = donem_fiyatlari_cek(sorted({islem.ticker for islem in islemler}), donem, bugun)
     except Exception as e:
         raise FiyatVerisiHatasi(str(e)) from e
     if fiyatlar.empty:
         raise FiyatVerisiHatasi("Yahoo Finance boş sonuç döndürdü")
 
-    return gun_ici_seri_olustur(islemler, fiyatlar)
+    sonuc = gun_ici_seri_olustur(islemler, fiyatlar, aralik)
+    kalanlar = elde_kalan_islemler(islemler)
+    return elde_kalan_seriyi_ekle(sonuc, gun_ici_seri_olustur(kalanlar, fiyatlar, aralik)["series"] if kalanlar else [])
+
+
+# Özet şeridindeki dönem kâr/zararı. Yalnızca hâlâ elde olan lotlar sayılır, satılan lotlar hesaba girmez.
+DONEM_GUNLERI = {"1h": 7, "1a": 30, "3a": 90, "1y": 365, "5y": 1825}
+
+
+def donem_pozisyonlari(
+    islemler: list[Islem],
+    baslangic: pd.Timestamp,
+    kapanislar: pd.DataFrame,
+) -> list[dict[str, Any]]:
+    """Elde kalan her hisse için dönem başındaki referans tutarı hesaplar.
+
+    Dönem başında elde olan lotun referansı o günkü kapanıştır, dönem içinde alınan lotun referansı alış fiyatıdır.
+    Satış en son alınan lottan düşer; böylece satılan lotların kâr veya zararı sonuca karışmaz.
+    """
+    baslangic = baslangic.normalize()
+    eskiler: dict[str, Pozisyon] = {}
+    katmanlar: dict[str, list[list[float]]] = {}
+    baslangic_kuruldu = False
+
+    def baslangici_kur() -> None:
+        for ticker, pozisyon in eskiler.items():
+            if pozisyon.lot <= LOT_TOLERANSI:
+                continue
+            fiyatlar = kapanislar[ticker].loc[:baslangic].dropna() if ticker in kapanislar.columns else pd.Series(dtype=float)
+            # Dönem başı fiyatı yoksa kâr uydurmamak için maliyet referans alınır.
+            fiyat = float(fiyatlar.iloc[-1]) if len(fiyatlar) else pozisyon.wac
+            katmanlar[ticker] = [[pozisyon.lot, fiyat]]
+
+    for islem in islemler:
+        if islem.zaman.normalize() <= baslangic:
+            pozisyon = eskiler.setdefault(islem.ticker, Pozisyon())
+            if islem.tip == "BUY":
+                yeni_lot = pozisyon.lot + islem.lot
+                pozisyon.wac = ((pozisyon.lot * pozisyon.wac) + (islem.lot * islem.fiyat)) / yeni_lot
+                pozisyon.lot = yeni_lot
+            elif islem.lot <= pozisyon.lot + LOT_TOLERANSI:
+                pozisyon.lot -= islem.lot
+            continue
+
+        if not baslangic_kuruldu:
+            baslangici_kur()
+            baslangic_kuruldu = True
+
+        katman = katmanlar.setdefault(islem.ticker, [])
+        if islem.tip == "BUY":
+            katman.append([islem.lot, islem.fiyat])
+        elif islem.lot <= sum(lot for lot, _ in katman) + LOT_TOLERANSI:
+            kalan = islem.lot
+            while kalan > LOT_TOLERANSI and katman:
+                dusulen = min(katman[-1][0], kalan)
+                katman[-1][0] -= dusulen
+                kalan -= dusulen
+                if katman[-1][0] <= LOT_TOLERANSI:
+                    katman.pop()
+
+    if not baslangic_kuruldu:
+        baslangici_kur()
+
+    return [
+        {
+            "ticker": ticker,
+            "lots": sum(lot for lot, _ in katman),
+            "reference": round(sum(lot * fiyat for lot, fiyat in katman), 4),
+        }
+        for ticker, katman in sorted(katmanlar.items())
+        if katman
+    ]
+
+
+def donem_kari_olustur(
+    islemler: list[Islem],
+    kapanislar: pd.DataFrame,
+    seanslar: pd.DatetimeIndex,
+    bugun: pd.Timestamp,
+) -> dict[str, list[dict[str, Any]]]:
+    """Her dönem için elde kalan pozisyonları döner. 1G dönem başı önceki seansın kapanışıdır."""
+    onceki_seans = seanslar[-2] if len(seanslar) >= 2 else bugun - pd.Timedelta(days=1)
+    baslangiclar = {"1g": onceki_seans}
+    baslangiclar.update({kod: bugun - pd.Timedelta(days=gun) for kod, gun in DONEM_GUNLERI.items()})
+    return {kod: donem_pozisyonlari(islemler, baslangic, kapanislar) for kod, baslangic in baslangiclar.items()}
+
+
+def portfoy_donem_kari(kayitlar: list[dict[str, Any]]) -> dict[str, Any]:
+    """Dönem kârı için dönem başı referanslarını ve son fiyatları döner. Fiyat çarpımı canlı fiyatla tarayıcıda yapılır."""
+    islemler = islemleri_coz(kayitlar)
+    bugun = pd.Timestamp.now(tz="Europe/Istanbul").tz_localize(None).normalize()
+    tickers = sorted({p["ticker"] for p in donem_pozisyonlari(islemler, bugun + pd.Timedelta(days=1), pd.DataFrame())})
+    if not tickers:
+        return {"periods": {kod: [] for kod in ["1g", *DONEM_GUNLERI]}, "last_prices": {}}
+
+    try:
+        gunluk = kapanislari_cek(tickers, islemler[0].zaman.normalize(), bugun)
+        saatlik = yf.download(tickers, period="5d", interval="1h", auto_adjust=False, progress=False)
+    except Exception as e:
+        raise FiyatVerisiHatasi(str(e)) from e
+    kapanis_saatlik = kapanis_kolonu(saatlik)
+    if isinstance(kapanis_saatlik, pd.Series):
+        kapanis_saatlik = kapanis_saatlik.to_frame(tickers[0])
+    # Yahoo'nun günlük verisinde eksik kalan günler saatlik veriyle tamamlanır.
+    kapanislar = seans_tablosu(kapanis_saatlik, gunluk)
+    if kapanislar.empty:
+        raise FiyatVerisiHatasi("Yahoo Finance boş sonuç döndürdü")
+
+    return {
+        "periods": donem_kari_olustur(islemler, kapanislar, kapanislar.index, bugun),
+        "last_prices": {
+            ticker: round(float(kapanislar[ticker].dropna().iloc[-1]), 2)
+            for ticker in kapanislar.columns
+            if kapanislar[ticker].notna().any()
+        },
+    }
+
+
+# Kâr/Zarar grafiği yalnızca bugün hâlâ elde olan lotları sayar. Satılan lotlar geçmişten de çıkar.
+def elde_kalan_islemler(islemler: list[Islem]) -> list[Islem]:
+    """Satışları en son alınan lottan düşer ve yalnızca elde kalan alımları döner."""
+    katmanlar: dict[str, list[list[Any]]] = {}
+    for islem in islemler:
+        katman = katmanlar.setdefault(islem.ticker, [])
+        if islem.tip == "BUY":
+            katman.append([islem.lot, islem])
+        elif islem.lot <= sum(lot for lot, _ in katman) + LOT_TOLERANSI:
+            kalan = islem.lot
+            while kalan > LOT_TOLERANSI and katman:
+                dusulen = min(katman[-1][0], kalan)
+                katman[-1][0] -= dusulen
+                kalan -= dusulen
+                if katman[-1][0] <= LOT_TOLERANSI:
+                    katman.pop()
+
+    kalanlar = [
+        Islem(zaman=alim.zaman, ticker=alim.ticker, tip="BUY", lot=lot, fiyat=alim.fiyat)
+        for katman in katmanlar.values()
+        for lot, alim in katman
+    ]
+    return sorted(kalanlar, key=lambda islem: islem.zaman)
+
+
+def elde_kalan_seriyi_ekle(sonuc: dict[str, Any], kalan_seri: list[dict[str, Any]]) -> dict[str, Any]:
+    """Her noktaya elde kalan lotların maliyetini, kâr/zararını ve getirisini ekler."""
+    sira = 0
+    kalan_nokta = None
+    for nokta in sonuc["series"]:
+        # Tarih metinleri aynı biçimde olduğu için sıralı karşılaştırılabilir.
+        while sira < len(kalan_seri) and kalan_seri[sira]["date"] <= nokta["date"]:
+            kalan_nokta = kalan_seri[sira]
+            sira += 1
+        nokta["held_invested"] = kalan_nokta["total_invested"] if kalan_nokta else 0.0
+        nokta["held_pnl"] = kalan_nokta["unrealized_pnl"] if kalan_nokta else 0.0
+        nokta["held_return_pct"] = kalan_nokta["unrealized_return_pct"] if kalan_nokta else 0.0
+    return sonuc
