@@ -8,6 +8,20 @@ Borsa İstanbul hisselerini izlemek ve sanal alım-satım yapmak için bir web u
 
 > Site ücretsiz sunucuda çalışır. Bir süre ziyaret edilmezse uykuya geçer, ilk açılış bir dakika kadar sürebilir. Açılınca **Demo portföyü yükle** düğmesiyle son 3 ayın gerçek fiyatlarıyla kurulmuş örnek portföy görülebilir.
 
+## Ekran Görüntüleri
+
+**Portföy:** dönem kâr/zararı, elde kalan lotların kâr/zarar grafiği ve dağılım
+
+![Portföy sayfası](docs/ekran-goruntuleri/portfoy.png)
+
+**Piyasa:** hisse listesi, teknik göstergeli mum grafiği, al/sat paneli ve piyasa özeti
+
+![Piyasa sayfası](docs/ekran-goruntuleri/piyasa.png)
+
+**Telefon görünümü**
+
+<img src="docs/ekran-goruntuleri/mobil.png" alt="Telefon görünümü" width="300">
+
 ## Öne Çıkan Teknik Çözümler
 
 - **Ağırlıklı ortalama maliyet ve kâr/zarar:** Alımlar ortalama maliyeti günceller, satışlar gerçekleşen kârı ayırır. Açığa satış engellenir. Kâr/zarar grafiği yalnızca hâlâ elde olan lotları sayar ve seçilen dönemin başından sıfırdan başlar.
