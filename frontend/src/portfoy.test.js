@@ -6,6 +6,8 @@ import {
   // Bölünme düzeltmesi testleri için.
   bolunmeleriUygula,
   bolunmeOrani,
+  // Örnek portföy testleri için.
+  demoPortfoyuOlustur,
   seriyiDonemeGoreKes,
   donemDegisimi,
   donemKari,
@@ -661,5 +663,46 @@ describe('bolunmeleriUygula', () => {
   it('Yahoonun tam sayıya çok yakın oranlarını yuvarlar', () => {
     expect(bolunmeOrani(18.999012)).toBe(19);
     expect(bolunmeOrani(4.25)).toBe(4.25);
+  });
+});
+
+// Tanıtım için örnek portföy.
+describe('demoPortfoyuOlustur', () => {
+  // 70 işlem günü, her gün fiyat 1 artar. Son gün 2026-11-20.
+  const mumlar = (baslangic) => Array.from({ length: 70 }, (_, i) => ({
+    time: new Date(Date.UTC(2026, 10, 20) - (69 - i) * 86400000).toISOString().slice(0, 10),
+    close: baslangic + i,
+  }));
+  const plan = [
+    { gun: 60, tip: 'AL', sembol: 'AAA', lot: 10 },
+    { gun: 10, tip: 'SAT', sembol: 'AAA', lot: 4 },
+    { gun: 5, tip: 'AL', sembol: 'BBB', lot: 1000 },
+  ];
+
+  it('plandaki günlerin kapanışıyla işlem yapar, satışın kârını ve nakdi hesaplar', () => {
+    const sonuc = demoPortfoyuOlustur({ AAA: mumlar(100), BBB: mumlar(50) }, plan, 2000);
+    const alis = sonuc.islemler.find(islem => islem.tip === 'AL');
+    const satis = sonuc.islemler.find(islem => islem.tip === 'SAT');
+    expect(alis).toMatchObject({ sembol: 'AAA', lot: 10, fiyat: 109, id: Date.UTC(2026, 8, 21, 8, 0) });
+    expect(satis).toMatchObject({ sembol: 'AAA', lot: 4, fiyat: 159, karZarar: 200 });
+    expect(sonuc.portfoy).toEqual([{ sembol: 'AAA', fiyat: 109, lot: 6, maliyet: 109 }]);
+    expect(sonuc.nakit.map(h => h.tip)).toEqual(['SATIM', 'ALIM', 'YATIRMA']);
+    expect(sonuc.nakit.reduce((toplam, h) => toplam + h.tutar, 0)).toBe(2000 - 1090 + 636);
+  });
+
+  it('bakiyesi yetmeyen alımı atlar', () => {
+    const sonuc = demoPortfoyuOlustur({ AAA: mumlar(100), BBB: mumlar(50) }, plan, 2000);
+    expect(sonuc.islemler.some(islem => islem.sembol === 'BBB')).toBe(false);
+  });
+
+  it('verisi olmayan hisseyi atlar, hiç veri yoksa null döner', () => {
+    expect(demoPortfoyuOlustur({ AAA: mumlar(100) }, plan, 2000).islemler).toHaveLength(2);
+    expect(demoPortfoyuOlustur({}, plan, 2000)).toBeNull();
+  });
+
+  it('kayıtlar yeniden eskiye sıralıdır', () => {
+    const { islemler, nakit } = demoPortfoyuOlustur({ AAA: mumlar(100), BBB: mumlar(50) }, plan, 100000);
+    expect(islemler.map(islem => islem.id)).toEqual([...islemler.map(islem => islem.id)].sort((a, b) => b - a));
+    expect(nakit[nakit.length - 1].tip).toBe('YATIRMA');
   });
 });

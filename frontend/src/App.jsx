@@ -18,6 +18,9 @@ import {
   endeksDisiSemboller,
   // Bölünme ve bedelsiz sermaye artırımlarını işlemek için.
   bolunmeleriUygula,
+  // Tanıtım için örnek portföy.
+  demoPortfoyuOlustur,
+  demoSembolleri,
   // Seçili hissenin dönem değişimi.
   donemDegisimi,
   // Yeni sayfa düzeninin yardımcıları.
@@ -647,6 +650,39 @@ function App() {
   const degisimYaz = (degisim) => (degisim === null ? '—' : isaretliYuzde(degisim));
   const degisimRengi = (degisim) => (degisim === null ? 'text-slate-400' : karRengi(degisim));
 
+  // Örnek portföy, demo hisselerinin son 3 aylık gerçek kapanışlarıyla kurulur.
+  // Yalnızca portföy ve geçmiş boşken sunulur, böylece kullanıcının kendi kayıtlarına karışmaz.
+  const [demoYukleniyor, setDemoYukleniyor] = useState(false);
+  const demoYukle = async () => {
+    setDemoYukleniyor(true);
+    try {
+      const grafikler = Object.fromEntries(await Promise.all(demoSembolleri().map(async sembol => {
+        const yanit = await fetch(`/api/grafik/${sembol}?donem=3a`);
+        return [sembol, yanit.ok ? await yanit.json() : []];
+      })));
+      const demo = demoPortfoyuOlustur(grafikler);
+      if (!demo) throw new Error('Demo için fiyat verisi alınamadı');
+      setPortfoy(demo.portfoy);
+      setIslemGecmisi(demo.islemler);
+      setNakitHareketleri(demo.nakit);
+    } catch (error) {
+      console.error('Demo portföy yüklenemedi:', error);
+      alert('Demo portföy için fiyat verisi alınamadı, biraz sonra tekrar deneyin.');
+    } finally {
+      setDemoYukleniyor(false);
+    }
+  };
+
+  // Portföy, işlem geçmişi ve nakit hareketleri silinir. Demoyu deneyen biri baştan başlayabilir.
+  const portfoyuSifirla = () => {
+    if (!confirm('Portföy, işlem geçmişi ve nakit hareketleri silinecek. Emin misiniz?')) return;
+    setPortfoy([]);
+    setIslemGecmisi([]);
+    setNakitHareketleri([]);
+    setUygulananBolunmeler([]);
+  };
+  const kayitVar = portfoy.length > 0 || islemGecmisi.length > 0 || nakitHareketleri.length > 0;
+
   //Geçici para yatırma işlemi; banka uygulaması bağlanınca kaldırılabilir.
   const paraYatirOnayla = () => {
     const tutar = tutarCoz(yatirilacakTutar);
@@ -798,6 +834,14 @@ function App() {
       {/* key sayesinde her sekme değişiminde perde yeniden açılır. Tıklamaları engellemez. */}
       <div key={aktifSekme} className="perde-gecisi fixed inset-0 z-10 bg-black pointer-events-none" aria-hidden="true" />
       <main className={`p-4 sm:p-7 mx-auto space-y-5 ${aktifSekme === 'piyasa' ? 'max-w-[1800px]' : 'max-w-[1400px]'}`}>
+        {/* Ücretsiz sunucu uykudan uyanırken ilk veri bir dakika kadar gecikebilir, ziyaretçi bunu bilsin. */}
+        {hisseler.length === 0 && (
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+            {piyasaHatasi
+              ? 'Sunucuya ulaşılamadı, yeniden deneniyor...'
+              : 'Piyasa verileri yükleniyor. Sunucu uyku modundaysa ilk açılış bir dakika kadar sürebilir.'}
+          </div>
+        )}
         {/* Solda hisse listesi, ortada göstergeli grafik, sağda al/sat ve piyasa özeti. Geniş ekranda sayfa kaydırmadan sığar. */}
         {aktifSekme === 'piyasa' && (
           // Orta genişlikte liste solda sabit durur, grafik ve al/sat sağda alt alta. Telefonda liste grafiğin hemen altına gelir.
@@ -976,6 +1020,33 @@ function App() {
         {/* Dış çerçeve kalktı. Özet tek şeritte, grafik ve dağılım yan yana. */}
         {aktifSekme === 'portfoy' && (
           <>
+            {/* Hiç kaydı olmayan ziyaretçi için kısa tanıtım ve örnek portföy. */}
+            {!kayitVar && (
+              <section className="rounded-xl border border-emerald-500/60 bg-emerald-500/5 p-5 flex flex-wrap items-center gap-4">
+                <div className="min-w-0 flex-1 basis-80">
+                  <h2 className="text-lg font-bold text-white">BIST100 Terminal'e hoş geldiniz</h2>
+                  <p className="text-sm text-slate-300 mt-1">
+                    Borsa İstanbul hisseleriyle sanal alım-satım simülasyonu. Hızlıca görmek için son 3 ayın gerçek fiyatlarıyla kurulmuş
+                    örnek portföyü yükleyin ya da Para Yatır ile kendi portföyünüzü oluşturun.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={demoYukle}
+                    disabled={demoYukleniyor}
+                    className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap"
+                  >
+                    {demoYukleniyor ? 'Yükleniyor...' : 'Demo portföyü yükle'}
+                  </button>
+                  <button
+                    onClick={() => setAktifSekme('piyasa')}
+                    className="border border-white hover:bg-white/10 text-white px-4 py-2 rounded-lg text-sm font-medium transition whitespace-nowrap"
+                  >
+                    Piyasaya git
+                  </button>
+                </div>
+              </section>
+            )}
              {eskiFiyatSayisi > 0 && (
                <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-300">
                  {hisseler.length === 0 && !piyasaHatasi
@@ -1011,7 +1082,15 @@ function App() {
             </div>
 
             <section className="bg-black rounded-xl border border-white">
-              <h3 className="font-medium p-5 pb-3">Hisselerim</h3>
+              {/* Kayıt varsa portföyü sıfırlama düğmesi. */}
+              <div className="flex items-center justify-between gap-3 p-5 pb-3">
+                <h3 className="font-medium">Hisselerim</h3>
+                {kayitVar && (
+                  <button onClick={portfoyuSifirla} className="text-xs text-slate-400 hover:text-red-400 transition">
+                    Portföyü sıfırla
+                  </button>
+                )}
+              </div>
               {portfoy.length === 0 ? (
                 <div className="text-center pb-8 pt-3 text-slate-500">Portföyünüzde hisse bulunmuyor.</div>
               ) : (
@@ -1159,6 +1238,11 @@ function App() {
           </section>
         )}
       </main>
+      {/* Her sayfada görünen uyarı ve kaynak kod bağlantısı. */}
+      <footer className="border-t border-white/20 px-4 sm:px-7 py-4 text-xs text-slate-500 flex flex-wrap justify-between gap-x-6 gap-y-1">
+        <span>Eğitim amaçlı simülasyondur. Gerçek emir gönderilmez, gerçek para kullanılmaz. Fiyatlar Yahoo Finance'ten gecikmeli alınır, yatırım tavsiyesi değildir.</span>
+        <a href="https://github.com/ibrahim1y/BIST-Terminal" target="_blank" rel="noreferrer" className="hover:text-white transition">Kaynak kod: GitHub</a>
+      </footer>
     </div>
   )
 }

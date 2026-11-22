@@ -374,3 +374,57 @@ export const bolunmeleriUygula = ({ portfoy, islemler, nakit, uygulananlar }, bo
     islenenler,
   };
 };
+
+// Tanıtım için örnek portföy. Siteyi ilk kez açan biri boş ekran yerine dolu grafikler görsün diye
+// son 3 ayın gerçek kapanışlarıyla birkaç alım ve bir satış yapılmış gibi kayıt üretilir.
+export const DEMO_YATIRIM = 100000;
+// gun: son işlem gününden kaç işlem günü önce yapıldığı.
+export const DEMO_PLANI = [
+  { gun: 60, tip: 'AL', sembol: 'THYAO', lot: 50 },
+  { gun: 60, tip: 'AL', sembol: 'GARAN', lot: 100 },
+  { gun: 45, tip: 'AL', sembol: 'ASELS', lot: 40 },
+  { gun: 30, tip: 'AL', sembol: 'BIMAS', lot: 30 },
+  { gun: 30, tip: 'AL', sembol: 'TUPRS', lot: 30 },
+  { gun: 15, tip: 'SAT', sembol: 'THYAO', lot: 20 },
+  { gun: 7, tip: 'AL', sembol: 'GARAN', lot: 50 },
+];
+export const demoSembolleri = (plan = DEMO_PLANI) => [...new Set(plan.map(adim => adim.sembol))];
+
+// grafikler: { SEMBOL: [{ time: 'YYYY-MM-DD', close }] } (hisse grafiğinin günlük verisi).
+// İşlemler İstanbul saatiyle 11:00'de, plan sırasıyla birer dakika arayla yapılmış sayılır. Bakiye yetmeyen alım veya verisi olmayan hisse atlanır.
+export const demoPortfoyuOlustur = (grafikler, plan = DEMO_PLANI, yatirim = DEMO_YATIRIM) => {
+  const adimlar = plan.map((adim, sira) => {
+    const mumlar = grafikler[adim.sembol] ?? [];
+    if (mumlar.length === 0) return null;
+    const mum = mumlar[Math.max(0, mumlar.length - 1 - adim.gun)];
+    const [yil, ay, gun] = String(mum.time).slice(0, 10).split('-').map(Number);
+    return { ...adim, fiyat: Number(mum.close), zaman: Date.UTC(yil, ay - 1, gun, 8, sira) };
+  }).filter(adim => adim && adim.fiyat > 0).sort((a, b) => a.zaman - b.zaman);
+  if (adimlar.length === 0) return null;
+
+  let portfoy = [];
+  const islemler = [];
+  let nakit = [nakitHareketi('YATIRMA', yatirim, 'Demo', new Date(adimlar[0].zaman - 60000))];
+  adimlar.forEach(({ tip, sembol, lot, fiyat, zaman }) => {
+    const an = new Date(zaman);
+    const kayit = islemKaydi(tip, sembol, lot, fiyat, an);
+    if (tip === 'AL') {
+      if (!yeterliBakiyeVarMi(bakiyeHesapla(nakit), kayit.tutar)) return;
+      portfoy = alimUygula(portfoy, { sembol }, lot, fiyat);
+      islemler.push(kayit);
+      nakit = [nakitHareketi('ALIM', -kayit.tutar, sembol, an), ...nakit];
+    } else {
+      const mevcut = portfoy.find(p => p.sembol === sembol);
+      const yeni = satimUygula(portfoy, sembol, lot);
+      if (yeni === null) return;
+      portfoy = yeni;
+      islemler.push({ ...kayit, karZarar: gerceklesenKarZarar(mevcut, fiyat, lot) });
+      nakit = [nakitHareketi('SATIM', kayit.tutar, sembol, an), ...nakit];
+    }
+  });
+  return {
+    portfoy,
+    islemler: islemler.sort((a, b) => b.id - a.id),
+    nakit: nakit.sort((a, b) => b.id - a.id),
+  };
+};

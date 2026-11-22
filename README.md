@@ -1,6 +1,35 @@
 # BIST Terminal
 
+[![Testler](https://github.com/ibrahim1y/BIST-Terminal/actions/workflows/testler.yml/badge.svg)](https://github.com/ibrahim1y/BIST-Terminal/actions/workflows/testler.yml)
+
 Borsa İstanbul hisselerini izlemek ve sanal alım-satım yapmak için bir web uygulaması. Gerçek emir göndermez, gerçek para kullanmaz.
+
+**Canlı site:** [bist-terminal-pif6.onrender.com](https://bist-terminal-pif6.onrender.com)
+
+> Site ücretsiz sunucuda çalışır. Bir süre ziyaret edilmezse uykuya geçer, ilk açılış bir dakika kadar sürebilir. Açılınca **Demo portföyü yükle** düğmesiyle son 3 ayın gerçek fiyatlarıyla kurulmuş örnek portföy görülebilir.
+
+## Öne Çıkan Teknik Çözümler
+
+- **Ağırlıklı ortalama maliyet ve kâr/zarar:** Alımlar ortalama maliyeti günceller, satışlar gerçekleşen kârı ayırır. Açığa satış engellenir. Kâr/zarar grafiği yalnızca hâlâ elde olan lotları sayar ve seçilen dönemin başından sıfırdan başlar.
+- **Eksik piyasa verisinin onarılması:** Yahoo'nun günlük verisi bazen bir günü atlar, saatlik verisi ise seans sonu kapanışını içermez. Günlük kapanışlar saatlik veriyle tamamlanır, böylece günlük değişim doğru güne göre hesaplanır.
+- **Bölünme ve bedelsiz sermaye artırımı:** Yahoo eski fiyatları bölünme oranıyla düzeltir. Uygulama da eski işlemlerin lotunu ve fiyatını aynı oranla düzeltir, küsurat lotu nakde çevirir. Böylece portföy sahte zarar göstermez.
+- **Kendini güncelleyen hisse listesi:** BIST 100 endeksinin üyeleri KAP'tan, şirket adları İş Yatırım'dan, sektörler KAP'tan günde bir alınır. Endeksten çıkan ama portföyde duran hisseler ayrıca izlenir.
+- **Yavaş veri kaynağına rağmen hızlı yanıt:** 100 hissenin verisi arka planda yenilenen önbellekte tutulur. İstekler hemen yanıtlanır, kimse bakmıyorsa yenileme durur.
+- **Herkese açık sunucu için koruma:** İstek gövdesi, işlem sayısı ve adres başına istek sayısı sınırlanır.
+- **Testler:** Hesap kodu internete çıkmadan test edilir. Backend ve frontend testleri, lint ve derleme her push'ta GitHub Actions'ta çalışır.
+
+## Mimari
+
+```mermaid
+flowchart LR
+    Tarayici["Tarayıcı<br/>React + Lightweight Charts<br/>portföy localStorage'da"] -- "/api" --> API["FastAPI<br/>önbellek, koruma,<br/>portföy analizi"]
+    API -- "derlenmiş arayüz" --> Tarayici
+    API --> Yahoo["Yahoo Finance<br/>fiyatlar, bölünmeler"]
+    API --> KAP["KAP<br/>endeks üyeleri, sektörler"]
+    API --> ISY["İş Yatırım<br/>şirket adları"]
+```
+
+Portföy ve işlem geçmişi tarayıcıda tutulur, analiz istendiğinde işlemler backend'e gönderilir. Bu sayede üyelik ve veritabanı gerekmez.
 
 ## Özellikler
 
@@ -15,6 +44,7 @@ Borsa İstanbul hisselerini izlemek ve sanal alım-satım yapmak için bir web u
 - Endeksten çıkan ama portföyde duran hisselerin fiyatlarının güncel tutulması
 - Portföy grafiği: toplam kâr/zarar ve portföy değeri görünümleri
 - Nakit bakiye ve simülasyon amaçlı para yatırma
+- Tek tıkla örnek portföy ve portföyü sıfırlama
 - İşlem geçmişi ve nakit hareketleri
 - Veri alınamadığında son alınan fiyatlarla çalışma
 
@@ -74,6 +104,8 @@ Proje tek bir Docker imajıyla yayınlanır: arayüz derlenir ve backend hem API
 
 Herkese açık sunucuda kötüye kullanıma karşı istek gövdesi 256 KB, portföy istekleri 2000 işlem ve her adres dakikada 120 istekle sınırlıdır.
 
+`main` dalına yapılan her push önce GitHub Actions'ta test edilir, Render da siteyi aynı commit'ten yeniden kurar.
+
 ## Testler
 
 `frontend` klasöründe:
@@ -82,9 +114,9 @@ Herkese açık sunucuda kötüye kullanıma karşı istek gövdesi 256 KB, portf
 npm test
 ```
 
-Testler al/sat, kâr/zarar, bakiye, bölünme düzeltmesi ve teknik gösterge hesaplarını kapsar.
+Testler al/sat, kâr/zarar, bakiye, bölünme düzeltmesi, örnek portföy ve teknik gösterge hesaplarını kapsar.
 
-Portföy analizi, şirket listesi ve endeks testleri için `backend` klasöründe:
+Portföy analizi, şirket listesi, endeks, önbellek ve istek sınırı testleri için `backend` klasöründe:
 
 ```bash
 python -m unittest

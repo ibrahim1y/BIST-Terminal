@@ -6,6 +6,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import koruma
+from onbellek import TazeOnbellek
 # Önbellek için threading ve time eklendi.
 import threading
 import time
@@ -72,8 +73,6 @@ sirket_listesi.arka_planda_guncelle(sirket_bilgileri, BIST_HISSELER)
 
 # Hisse listesi için önbellek süresi ve bellekteki kayıt.
 HISSELER_CACHE_SURESI = 30  # saniye
-hisseler_cache = {"zaman": 0.0, "veri": []}
-hisseler_kilit = threading.Lock()
 
 # Yahoo'dan veri çeken kısım ayrı fonksiyona alındı.
 # Aynı fonksiyon endeks dışındaki portföy hisseleri için de kullanılır, verilmezse BIST 100 listesi çekilir.
@@ -125,18 +124,15 @@ def hisseleri_cek(semboller: list[str] | None = None, ilk_id: int = 1):
             
     return hisseler_listesi
 
-# Süre dolmadıysa önbellekten döner, boş sonuç önbelleğe alınmaz.
+# Liste arka planda yenilenir, istek eldeki veriyi hemen alır. Boş sonuç önbelleğe alınmaz.
+# Sunucu açılır açılmaz ilk indirme başlar, uyanan sunucuya gelen ilk ziyaretçi daha az bekler.
+hisseler_onbellegi = TazeOnbellek("hisse listesi", hisseleri_cek, sure=HISSELER_CACHE_SURESI)
+hisseler_onbellegi.arka_planda_baslat()
+
+
 @app.get("/api/hisseler")
 def get_hisseler():
-    with hisseler_kilit:
-        if hisseler_cache["veri"] and time.monotonic() - hisseler_cache["zaman"] < HISSELER_CACHE_SURESI:
-            return hisseler_cache["veri"]
-
-        veri = hisseleri_cek()
-        if veri:
-            hisseler_cache["veri"] = veri
-            hisseler_cache["zaman"] = time.monotonic()
-        return veri
+    return hisseler_onbellegi.oku()
 
 # Endeksten çıkan ama portföyde duran hisseler piyasa listesinde yer almaz.
 # Frontend bu hisseleri sorar, fiyatları ve satış için gereken bilgiler aynı biçimde döner.
@@ -281,8 +277,6 @@ GOSTERGELER = [
     ("EURTRY=X", "EURO/TL", 4),
     ("GC=F", "ONS ALTIN", 2),
 ]
-gostergeler_cache = {"zaman": 0.0, "veri": []}
-gostergeler_kilit = threading.Lock()
 
 
 def gostergeleri_cek():
@@ -302,20 +296,14 @@ def gostergeleri_cek():
     return sonuc
 
 
+# Göstergeler de hisse listesi gibi arka planda yenilenir.
+gostergeler_onbellegi = TazeOnbellek("göstergeler", gostergeleri_cek, sure=HISSELER_CACHE_SURESI)
+gostergeler_onbellegi.arka_planda_baslat()
+
+
 @app.get("/api/gostergeler")
 def get_gostergeler():
-    with gostergeler_kilit:
-        if gostergeler_cache["veri"] and time.monotonic() - gostergeler_cache["zaman"] < HISSELER_CACHE_SURESI:
-            return gostergeler_cache["veri"]
-        try:
-            veri = gostergeleri_cek()
-        except Exception as e:
-            print(f"HATA - göstergeler çekilemedi: {e}")
-            veri = []
-        if veri:
-            gostergeler_cache["veri"] = veri
-            gostergeler_cache["zaman"] = time.monotonic()
-        return veri
+    return gostergeler_onbellegi.oku()
 
 
 # Derlenmiş arayüz varsa site de buradan sunulur. Bu satır en sonda kalmalı,
