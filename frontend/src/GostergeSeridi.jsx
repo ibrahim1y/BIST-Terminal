@@ -18,7 +18,8 @@ const GostergeSeridi = () => {
   const [simdi, setSimdi] = useState(() => new Date());
 
   useEffect(() => {
-    const getir = () => fetch('http://127.0.0.1:8000/api/gostergeler')
+    // Göreli adres, yayında ve geliştirmede aynı çalışır.
+    const getir = () => fetch('/api/gostergeler')
       .then(res => (res.ok ? res.json() : []))
       .then(data => { if (Array.isArray(data) && data.length > 0) setGostergeler(data); })
       .catch(error => console.error('Göstergeler alınamadı:', error));

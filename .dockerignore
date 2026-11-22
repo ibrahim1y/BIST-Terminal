@@ -1,0 +1,9 @@
+# İmaja yalnızca gereken dosyalar girer.
+.git
+**/node_modules
+**/dist
+**/__pycache__
+**/venv
+**/*.pyc
+**/.env
+**/.eslintcache

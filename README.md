@@ -66,7 +66,13 @@ python -m uvicorn main:app --reload
 npm run dev
 ```
 
-Uygulamayı [http://localhost:5173](http://localhost:5173) adresinden açın. Backend yalnızca bu adresten gelen isteklere izin verir, bu yüzden `127.0.0.1:5173` adresi çalışmaz.
+Uygulamayı [http://localhost:5173](http://localhost:5173) adresinden açın. Vite, `/api` isteklerini 8000 portundaki backend'e yönlendirir.
+
+## Yayın
+
+Proje tek bir Docker imajıyla yayınlanır: arayüz derlenir ve backend hem API'yi hem arayüzü aynı adresten sunar. `render.yaml` dosyası [Render](https://render.com) için hazırdır, depo bağlanınca site kendiliğinden kurulur.
+
+Herkese açık sunucuda kötüye kullanıma karşı istek gövdesi 256 KB, portföy istekleri 2000 işlem ve her adres dakikada 120 istekle sınırlıdır.
 
 ## Testler
 

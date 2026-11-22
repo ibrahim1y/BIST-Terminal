@@ -1,5 +1,11 @@
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+# Yayın için. Arayüz aynı sunucudan verilir, istekler sınırlanır.
+import os
+from pathlib import Path
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+import koruma
 # Önbellek için threading ve time eklendi.
 import threading
 import time
@@ -15,13 +21,33 @@ from portfoy_analiz import DONEM_SIKLIKLARI, FiyatVerisiHatasi, IslemHatasi, por
 
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS ayarı kaldırıldı. Geliştirmede Vite istekleri backend'e yönlendirir, yayında site ve API aynı adrestedir.
+# Her API isteğinde gövde boyutu ve adres başına istek sayısı denetlenir. Sağlık kontrolü sayılmaz.
+hiz_siniri = koruma.HizSiniri()
+
+
+@app.middleware("http")
+async def koruma_katmani(request: Request, call_next):
+    yol = request.url.path
+    if yol.startswith("/api/") and yol != "/api/saglik":
+        if koruma.govde_cok_buyuk(request.headers):
+            return JSONResponse(status_code=413, content={"detail": "İstek çok büyük"})
+        adres = koruma.istemci_adresi(request.headers, request.client.host if request.client else "")
+        if not hiz_siniri.izin_ver(adres):
+            return JSONResponse(status_code=429, content={"detail": "Çok fazla istek, biraz sonra tekrar deneyin"})
+    return await call_next(request)
+
+
+# Barındırma servisi sunucunun ayakta olduğunu bu adresle kontrol eder. İnternete çıkmaz.
+@app.get("/api/saglik")
+def get_saglik():
+    return {"durum": "ok"}
+
+
+# Portföy isteklerinde işlem sayısı sınırlanır. Her istek Yahoo'dan veri indirdiği için sınırsız liste sunucuyu kilitleyebilir.
+def islem_sayisini_denetle(islemler: list[dict[str, Any]]) -> None:
+    if len(islemler) > koruma.ISLEM_SINIRI:
+        raise HTTPException(status_code=413, detail=f"En fazla {koruma.ISLEM_SINIRI} işlem gönderilebilir")
 
 #BIST100 listesi, 1 Ekim - 31 Aralık 2026 dönemi. Liste her çeyrek değişebilir.
 # Bu liste yalnızca ilk açılış içindir. Güncel üyeler KAP'tan günde bir alınıp bist100.json dosyasından okunur.
@@ -178,6 +204,9 @@ def get_grafik(sembol: str, donem: str = "3a"):
     #Tanımsız dönem reddedilir.
     if donem not in GRAFIK_DONEMLERI:
         raise HTTPException(status_code=400, detail="Geçersiz dönem")
+    # Sembol de denetlenir, Yahoo'ya yalnızca hisse kodu biçimindeki değerler gider.
+    if not sirket_listesi.EK_SEMBOL.match(sembol):
+        raise HTTPException(status_code=400, detail="Geçersiz sembol")
 
     aralik, siklik = GRAFIK_DONEMLERI[donem]
     gun_ici = siklik.endswith("m")
@@ -207,6 +236,7 @@ def get_grafik(sembol: str, donem: str = "3a"):
 # İşlemler tarayıcıda tutulduğu için istek gövdesinde gönderilir.
 @app.post("/api/portfoy-analiz")
 def post_portfoy_analiz(islemler: list[dict[str, Any]]):
+    islem_sayisini_denetle(islemler)
     try:
         return portfoy_analizi(islemler)
     except IslemHatasi as e:
@@ -221,6 +251,7 @@ def post_portfoy_analiz(islemler: list[dict[str, Any]]):
 def post_portfoy_gun_ici_analiz(islemler: list[dict[str, Any]], donem: str = "1g"):
     if donem not in DONEM_SIKLIKLARI:
         raise HTTPException(status_code=400, detail="Geçersiz dönem")
+    islem_sayisini_denetle(islemler)
     try:
         return portfoy_gun_ici_analizi(islemler, donem)
     except IslemHatasi as e:
@@ -232,6 +263,7 @@ def post_portfoy_gun_ici_analiz(islemler: list[dict[str, Any]], donem: str = "1g
 # Özet şeridindeki 1G-5Y kâr/zararı için elde kalan lotların dönem başı referanslarını döner.
 @app.post("/api/portfoy-donem-kari")
 def post_portfoy_donem_kari(islemler: list[dict[str, Any]]):
+    islem_sayisini_denetle(islemler)
     try:
         return portfoy_donem_kari(islemler)
     except IslemHatasi as e:
@@ -284,3 +316,10 @@ def get_gostergeler():
             gostergeler_cache["veri"] = veri
             gostergeler_cache["zaman"] = time.monotonic()
         return veri
+
+
+# Derlenmiş arayüz varsa site de buradan sunulur. Bu satır en sonda kalmalı,
+# yoksa kök adrese bağlanan dosyalar API adreslerinin önüne geçer.
+ARAYUZ_KLASORU = Path(os.environ.get("ARAYUZ_KLASORU", Path(__file__).resolve().parent.parent / "frontend" / "dist"))
+if ARAYUZ_KLASORU.is_dir():
+    app.mount("/", StaticFiles(directory=ARAYUZ_KLASORU, html=True), name="arayuz")

@@ -1,0 +1,8 @@
+# Render ayarı. Depo bağlanınca site bu dosyaya göre Dockerfile ile kurulur.
+services:
+  - type: web
+    name: bist-terminal
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/saglik
+    autoDeploy: true

@@ -430,9 +430,11 @@ function App() {
   }, [islemGecmisi]);
 
   // VERİ GÜNCELLEME DÖNGÜSÜ (POLLING)
+  // Bütün istekler göreli /api adresine gider. Yayında site ve API aynı sunucudadır,
+  // geliştirmede Vite bu istekleri 8000 portundaki backend'e yönlendirir.
   const piyasaVerileriniGetir = () => {
     //Python backend API'sinden verileri çeker.
-    fetch('http://127.0.0.1:8000/api/hisseler')
+    fetch('/api/hisseler')
       .then(response => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
@@ -467,7 +469,7 @@ function App() {
   useEffect(() => {
     if (!endeksDisi) return;
     let iptal = false;
-    fetch(`http://127.0.0.1:8000/api/hisseler/ek?semboller=${encodeURIComponent(endeksDisi)}`)
+    fetch(`/api/hisseler/ek?semboller=${encodeURIComponent(endeksDisi)}`)
       .then(response => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
@@ -489,7 +491,7 @@ function App() {
   useEffect(() => {
     if (!islemSembolleri) return;
     let iptal = false;
-    fetch(`http://127.0.0.1:8000/api/bolunmeler?semboller=${encodeURIComponent(islemSembolleri)}`)
+    fetch(`/api/bolunmeler?semboller=${encodeURIComponent(islemSembolleri)}`)
       .then(response => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
@@ -530,7 +532,7 @@ function App() {
       //Seçilen dönem backend'e gönderilir, dönem değişince veri yeniden çekilir.
       const donem = grafikDonemi;
       let iptal = false;
-      fetch(`http://127.0.0.1:8000/api/grafik/${sembol}?donem=${donem}`)
+      fetch(`/api/grafik/${sembol}?donem=${donem}`)
         .then(res => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           return res.json();
@@ -558,7 +560,7 @@ function App() {
       const sonucuYaz = (veri) => setPortfoyGrafikSonucu(onceki => (
         veri === null && onceki.semboller === semboller && onceki.anahtar === anahtar ? onceki : { semboller, anahtar, veri }
       ));
-      const veriyiGetir = () => fetch(`http://127.0.0.1:8000/api/portfoy-analiz${anahtar === 'gunluk' ? '' : `/gun-ici?donem=${anahtar}`}`, {
+      const veriyiGetir = () => fetch(`/api/portfoy-analiz${anahtar === 'gunluk' ? '' : `/gun-ici?donem=${anahtar}`}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: govde,
@@ -589,7 +591,7 @@ function App() {
     if (aktifSekme === 'portfoy') {
       const govde = JSON.stringify(analizIslemleri(islemGecmisi));
       let iptal = false;
-      const veriyiGetir = () => fetch('http://127.0.0.1:8000/api/portfoy-donem-kari', {
+      const veriyiGetir = () => fetch('/api/portfoy-donem-kari', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: govde,
