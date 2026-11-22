@@ -1,4 +1,4 @@
-# BIST Terminal
+# Borsa Terminal
 
 [![Testler](https://github.com/ibrahim1y/BIST-Terminal/actions/workflows/testler.yml/badge.svg)](https://github.com/ibrahim1y/BIST-Terminal/actions/workflows/testler.yml)
 
@@ -157,6 +157,14 @@ python -m unittest
 - Portföy, işlem geçmişi, nakit hareketleri ve son fiyatlar yalnızca tarayıcının `localStorage` alanında tutulur. Tarayıcı verileri silinirse bunlar da silinir.
 - Para yatırma simülasyondur, gerçek para kullanılmaz.
 - Bu proje yatırım tavsiyesi vermez.
+
+## Yasal Uyarı
+
+- Bu proje eğitim ve tanıtım amaçlıdır, ticari değildir. Gerçek emir göndermez, gerçek para kullanmaz ve yatırım tavsiyesi vermez.
+- Fiyatlar Yahoo Finance'ten `yfinance` kütüphanesiyle gecikmeli alınır. Veriler Yahoo'nun ve veri sağlayıcılarının kullanım koşullarına tabidir. Doğrulukları garanti edilmez.
+- Şirket adları İş Yatırım'dan, BIST 100 üyeleri ve sektörler Kamuyu Aydınlatma Platformu'ndan (KAP) alınır.
+- Proje Borsa İstanbul, Yahoo, KAP veya İş Yatırım ile bağlantılı değildir ve onlar tarafından onaylanmamıştır. BIST ve BIST 100, Borsa İstanbul A.Ş.'nin markalarıdır, burada yalnızca hisseleri tanımlamak için kullanılır.
+- Canlı site arama motorlarına kapalıdır (`robots.txt` ve `noindex`).
 
 ## Sorun Giderme
 

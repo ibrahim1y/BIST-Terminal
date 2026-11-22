@@ -782,7 +782,8 @@ function App() {
       {/* Sekmeler altı çizili, nakit bakiye ve para yatırma her sayfada sağ üstte. */}
       <nav className="border-b border-white bg-black px-4 sm:px-7 py-3 lg:py-0 lg:h-16 flex flex-wrap items-center gap-x-7 gap-y-2 sticky top-0 z-20">
         <h1 className="text-2xl font-bold text-emerald-400 tracking-wide cursor-pointer" onClick={() => setAktifSekme('portfoy')}>
-          BIST100 <span className="text-white font-medium text-lg">Terminal</span>
+          {/* Ürün adında Borsa İstanbul'un markası (BIST) kullanılmaz. */}
+          Borsa <span className="text-white font-medium text-lg">Terminal</span>
         </h1>
         <div className="order-3 lg:order-none w-full lg:w-auto h-10 lg:h-full flex">
           <button onClick={() => setAktifSekme('portfoy')} className={sekmeStili('portfoy')}>Portföyüm ({portfoy.length})</button>
@@ -1024,7 +1025,7 @@ function App() {
             {!kayitVar && (
               <section className="rounded-xl border border-emerald-500/60 bg-emerald-500/5 p-5 flex flex-wrap items-center gap-4">
                 <div className="min-w-0 flex-1 basis-80">
-                  <h2 className="text-lg font-bold text-white">BIST100 Terminal'e hoş geldiniz</h2>
+                  <h2 className="text-lg font-bold text-white">Borsa Terminal'e hoş geldiniz</h2>
                   <p className="text-sm text-slate-300 mt-1">
                     Borsa İstanbul hisseleriyle sanal alım-satım simülasyonu. Hızlıca görmek için son 3 ayın gerçek fiyatlarıyla kurulmuş
                     örnek portföyü yükleyin ya da Para Yatır ile kendi portföyünüzü oluşturun.
@@ -1239,8 +1240,13 @@ function App() {
         )}
       </main>
       {/* Her sayfada görünen uyarı ve kaynak kod bağlantısı. */}
-      <footer className="border-t border-white/20 px-4 sm:px-7 py-4 text-xs text-slate-500 flex flex-wrap justify-between gap-x-6 gap-y-1">
-        <span>Eğitim amaçlı simülasyondur. Gerçek emir gönderilmez, gerçek para kullanılmaz. Fiyatlar Yahoo Finance'ten gecikmeli alınır, yatırım tavsiyesi değildir.</span>
+      {/* Veri kaynakları, bağımsızlık ve marka bildirimi eklendi. */}
+      <footer className="border-t border-white/20 px-4 sm:px-7 py-4 text-xs text-slate-500 flex flex-wrap justify-between gap-x-6 gap-y-2">
+        <div className="space-y-1 max-w-4xl">
+          <p>Eğitim amaçlı, ticari olmayan bir simülasyondur. Gerçek emir gönderilmez, gerçek para kullanılmaz, yatırım tavsiyesi değildir.</p>
+          <p>Fiyatlar Yahoo Finance'ten gecikmeli alınır ve doğruluğu garanti edilmez. Şirket adları İş Yatırım'dan, endeks üyeleri ve sektörler KAP'tan alınır.</p>
+          <p>Bu site Borsa İstanbul, Yahoo, KAP veya İş Yatırım ile bağlantılı değildir. BIST ve BIST 100, Borsa İstanbul A.Ş.'nin markalarıdır.</p>
+        </div>
         <a href="https://github.com/ibrahim1y/BIST-Terminal" target="_blank" rel="noreferrer" className="hover:text-white transition">Kaynak kod: GitHub</a>
       </footer>
     </div>
