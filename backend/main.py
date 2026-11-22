@@ -6,9 +6,8 @@ import time
 import yfinance as yf
 # Portföy analizi endpoint'i için eklendi.
 from typing import Any
-import json
-from pathlib import Path
 import pandas as pd
+import sirket_bilgileri as sirket_listesi
 from portfoy_analiz import gun_ozeti, hisse_tablosu
 from portfoy_analiz import DONEM_SIKLIKLARI, FiyatVerisiHatasi, IslemHatasi, portfoy_analizi, portfoy_donem_kari, portfoy_gun_ici_analizi, kapanis_kolonu, seans_tablosu
 
@@ -36,10 +35,10 @@ BIST_HISSELER = [
     "TTKOM", "TTRAK", "TUKAS", "TUPRS", "TURSG", "ULKER", "VAKBN", "VESTL", "YKBNK", "ZOREN"
 ]
 
-# Şirket adları İş Yatırım'ın hisse listesinden, sektörler KAP'ın sektör sayfasından alınıp sirketler.json dosyasına yazıldı.
-# BIST 100 listesi değişince bu dosyaya yeni hisselerin adı ve sektörü de eklenmeli; eksik hisse sembolüyle gösterilir.
-with open(Path(__file__).with_name("sirketler.json"), encoding="utf-8") as dosya:
-    sirket_bilgileri: dict[str, dict[str, str]] = json.load(dosya)
+# Şirket adları İş Yatırım'ın hisse listesinden, sektörler KAP'ın sektör sayfasından alınıp sirketler.json dosyasına yazılır.
+# BIST 100 listesine yeni hisse eklenince adı ve sektörü açılışta ve günde bir otomatik tamamlanır.
+sirket_bilgileri = sirket_listesi.yukle()
+sirket_listesi.arka_planda_guncelle(sirket_bilgileri, BIST_HISSELER)
 
 # Hisse listesi için önbellek süresi ve bellekteki kayıt.
 HISSELER_CACHE_SURESI = 30  # saniye
