@@ -5,6 +5,8 @@ import unittest
 from pathlib import Path
 
 from sirket_bilgileri import ISY_ADRESI, KAP_ADRESI, adlari_ayikla, eksikleri_tamamla, sektorleri_ayikla, tr_baslik
+# Endeks listesinin otomatik güncellenmesi için eklendi.
+from sirket_bilgileri import endeks_uyelerini_ayikla, endeksi_guncelle, endeksi_yukle
 
 ISY_SAYFASI = """
 <option value="THYAO">THYAO | Türk Hava Yolları</option>
@@ -81,6 +83,71 @@ class TamamlamaTestleri(unittest.TestCase):
         self.assertEqual(eksikleri_tamamla(bilgiler, ["THYAO"], hatali, self.dosya), [])
         self.assertEqual(bilgiler, {})
         self.assertFalse(self.dosya.exists())
+
+
+# Endeks listesinin testleri. Sayfa, KAP'taki gibi tırnakları kaçışlı olarak verilir.
+def kap_endeks_sayfasi(xu100, xu030=("THYAO",)):
+    def blok(kod, semboller):
+        icerik = ",".join(f'{{\\"stockCode\\":\\"{s}\\",\\"title\\":\\"{s} A.Ş.\\"}}' for s in semboller)
+        return f'{{\\"code\\":\\"{kod}\\",\\"content\\":[{icerik}]}}'
+    return f'\\"initialData\\":[{blok("XU100", xu100)},{blok("XU030", xu030)}]'
+
+
+YUZ_HISSE = [f"H{i:03d}" for i in range(100)]
+
+
+class EndeksTestleri(unittest.TestCase):
+    def setUp(self):
+        self.klasor = tempfile.TemporaryDirectory()
+        self.dosya = Path(self.klasor.name) / "bist100.json"
+
+    def tearDown(self):
+        self.klasor.cleanup()
+
+    def test_yalnizca_xu100_uyeleri_sirali_ayiklanir(self):
+        sayfa = kap_endeks_sayfasi(["THYAO", "AKBNK", "KCHOL, KOC"], xu030=["ZZZZZ"])
+        self.assertEqual(endeks_uyelerini_ayikla(sayfa), ["AKBNK", "KCHOL", "KOC", "THYAO"])
+
+    def test_endeks_yoksa_bos_liste(self):
+        self.assertEqual(endeks_uyelerini_ayikla("<html></html>"), [])
+
+    def test_degisen_endeks_listeyi_yerinde_ve_dosyada_gunceller(self):
+        semboller = YUZ_HISSE[:99] + ["ESKI"]
+        ayni_liste = semboller
+        self.assertTrue(endeksi_guncelle(semboller, lambda adres: kap_endeks_sayfasi(YUZ_HISSE), self.dosya))
+        self.assertIs(semboller, ayni_liste)
+        self.assertEqual(semboller, YUZ_HISSE)
+        self.assertEqual(json.loads(self.dosya.read_text(encoding="utf-8"))["semboller"], YUZ_HISSE)
+
+    def test_ayni_endekste_degisiklik_yok_ama_kontrol_zamani_yazilir(self):
+        semboller = list(YUZ_HISSE)
+        self.assertFalse(endeksi_guncelle(semboller, lambda adres: kap_endeks_sayfasi(YUZ_HISSE), self.dosya))
+        self.assertGreater(json.loads(self.dosya.read_text(encoding="utf-8"))["guncelleme"], 0)
+
+    def test_eksik_gelen_liste_kabul_edilmez(self):
+        semboller = list(YUZ_HISSE)
+        self.assertFalse(endeksi_guncelle(semboller, lambda adres: kap_endeks_sayfasi(YUZ_HISSE[:50]), self.dosya))
+        self.assertEqual(semboller, YUZ_HISSE)
+        self.assertFalse(self.dosya.exists())
+
+    def test_kaynaga_ulasilamazsa_liste_degismez(self):
+        def hatali(adres):
+            raise OSError("bağlantı yok")
+        semboller = list(YUZ_HISSE)
+        self.assertFalse(endeksi_guncelle(semboller, hatali, self.dosya))
+        self.assertEqual(semboller, YUZ_HISSE)
+
+    def test_kayitli_liste_yuklenir_bozuk_dosyada_koddaki_liste_kalir(self):
+        semboller = ["ESKI"]
+        self.assertEqual(endeksi_yukle(semboller, self.dosya), 0.0)
+        self.assertEqual(semboller, ["ESKI"])
+        self.dosya.write_text(json.dumps({"guncelleme": 123.0, "semboller": YUZ_HISSE}), encoding="utf-8")
+        self.assertEqual(endeksi_yukle(semboller, self.dosya), 123.0)
+        self.assertEqual(semboller, YUZ_HISSE)
+        self.dosya.write_text("bozuk", encoding="utf-8")
+        semboller = ["ESKI"]
+        endeksi_yukle(semboller, self.dosya)
+        self.assertEqual(semboller, ["ESKI"])
 
 
 if __name__ == "__main__":

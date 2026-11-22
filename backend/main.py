@@ -22,6 +22,7 @@ app.add_middleware(
 )
 
 #BIST100 listesi, 1 Ekim - 31 Aralık 2026 dönemi. Liste her çeyrek değişebilir.
+# Bu liste yalnızca ilk açılış içindir. Güncel üyeler KAP'tan günde bir alınıp bist100.json dosyasından okunur.
 BIST_HISSELER = [
     "AEFES", "AGHOL", "AHGAZ", "AKBNK", "AKCNS", "AKFYE", "AKSA", "AKSEN", "ALARK", "ALBRK",
     "ALTNY", "ANHYT", "ANSGR", "ARCLK", "ASELS", "ASTOR", "AYGAZ", "BERA", "BIMAS", "BINHO",
@@ -37,6 +38,7 @@ BIST_HISSELER = [
 
 # Şirket adları İş Yatırım'ın hisse listesinden, sektörler KAP'ın sektör sayfasından alınıp sirketler.json dosyasına yazılır.
 # BIST 100 listesine yeni hisse eklenince adı ve sektörü açılışta ve günde bir otomatik tamamlanır.
+# Endeks listesi de aynı arka plan işinde güncellenir, BIST_HISSELER yerinde değiştirilir.
 sirket_bilgileri = sirket_listesi.yukle()
 sirket_listesi.arka_planda_guncelle(sirket_bilgileri, BIST_HISSELER)
 
@@ -47,7 +49,9 @@ hisseler_kilit = threading.Lock()
 
 # Yahoo'dan veri çeken kısım ayrı fonksiyona alındı.
 def hisseleri_cek():
-    tickers = " ".join([f"{h}.IS" for h in BIST_HISSELER])
+    # Liste arka planda değişebileceği için bir kopyası üzerinden çalışılır.
+    semboller = list(BIST_HISSELER)
+    tickers = " ".join([f"{h}.IS" for h in semboller])
     # Günlük veri yerine saatlik veri kullanılır, seçili güne denk gelen eksik satır değişimi bozmaz.
     # Günlük kapanış önceliklidir, seans sonu fiyatını doğru verir.
     saatlik = yf.download(tickers, period="5d", interval="1h", auto_adjust=False, progress=False)
@@ -55,7 +59,7 @@ def hisseleri_cek():
     seanslar = seans_tablosu(kapanis_kolonu(saatlik), kapanis_kolonu(gunluk))
     
     hisseler_listesi = []
-    for i, sembol in enumerate(BIST_HISSELER):
+    for i, sembol in enumerate(semboller):
         sembol_is = f"{sembol}.IS"
         try:
             kapanislar = seanslar[sembol_is].dropna()

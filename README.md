@@ -96,7 +96,7 @@ python -m unittest
 ## Notlar
 
 - Fiyatlar Yahoo Finance'ten alınır ve gecikmeli olabilir.
-- Şirket adları ve sektörler `backend/sirketler.json` dosyasındadır. Listeye yeni hisse eklenince adı İş Yatırım'dan, sektörü KAP'tan açılışta ve günde bir otomatik tamamlanır.
+- Şirket adları ve sektörler `backend/sirketler.json` dosyasındadır. Listeye yeni hisse eklenince adı İş Yatırım'dan, sektörü KAP'tan açılışta ve günde bir otomatik tamamlanır. BIST 100 endeksinin üyeleri de KAP'tan günde bir alınıp `backend/bist100.json` dosyasına yazılır; endeks değişince liste kendiliğinden güncellenir.
 - Portföy, işlem geçmişi, nakit hareketleri ve son fiyatlar yalnızca tarayıcının `localStorage` alanında tutulur. Tarayıcı verileri silinirse bunlar da silinir.
 - Para yatırma simülasyondur, gerçek para kullanılmaz.
 - Bu proje yatırım tavsiyesi vermez.
