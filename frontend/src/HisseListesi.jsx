@@ -70,7 +70,9 @@ const HisseListesi = ({ hisseler, aramaMetni, setAramaMetni, seciliSembol, hisse
           const secili = hisse.sembol === seciliSembol;
           const favori = favoriler.includes(hisse.sembol);
           // Seçili hissede dönem değişimi, diğerlerinde günlük değişim gösterilir.
-          const degisim = secili ? seciliDegisim.deger : hisse.degisim;
+          // Yükselen ve Düşen sekmeleri günlük değişime göre sıralandığı için orada seçili hisse de günlük değişimi gösterir.
+          const donemGoster = secili && sekme !== 'yukselen' && sekme !== 'dusen';
+          const degisim = donemGoster ? seciliDegisim.deger : hisse.degisim;
           return (
             <div
               key={hisse.id}
@@ -91,7 +93,7 @@ const HisseListesi = ({ hisseler, aramaMetni, setAramaMetni, seciliSembol, hisse
               <MiniGrafik degerler={hisse.gecmis} yukseliste={hisse.degisim >= 0} />
               <span className="text-right font-semibold text-sm tabular-nums">{hisse.fiyat.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               <span className={`text-center rounded-md py-1 text-xs font-semibold tabular-nums ${degisimKutusu(degisim)}`}>
-                {secili && <span className="mr-1 font-normal text-slate-400">{seciliDegisim.ad}</span>}
+                {donemGoster && <span className="mr-1 font-normal text-slate-400">{seciliDegisim.ad}</span>}
                 {degisim === null ? '—' : isaretliYuzde(degisim)}
               </span>
             </div>
