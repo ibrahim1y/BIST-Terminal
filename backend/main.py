@@ -48,9 +48,10 @@ hisseler_cache = {"zaman": 0.0, "veri": []}
 hisseler_kilit = threading.Lock()
 
 # Yahoo'dan veri çeken kısım ayrı fonksiyona alındı.
-def hisseleri_cek():
+# Aynı fonksiyon endeks dışındaki portföy hisseleri için de kullanılır, verilmezse BIST 100 listesi çekilir.
+def hisseleri_cek(semboller: list[str] | None = None, ilk_id: int = 1):
     # Liste arka planda değişebileceği için bir kopyası üzerinden çalışılır.
-    semboller = list(BIST_HISSELER)
+    semboller = list(BIST_HISSELER) if semboller is None else semboller
     tickers = " ".join([f"{h}.IS" for h in semboller])
     # Günlük veri yerine saatlik veri kullanılır, seçili güne denk gelen eksik satır değişimi bozmaz.
     # Günlük kapanış önceliklidir, seans sonu fiyatını doğru verir.
@@ -78,7 +79,7 @@ def hisseleri_cek():
                 saatlik_kapanislar = saatlik_tablo["Close"].dropna() if "Close" in saatlik_tablo else pd.Series(dtype=float)
                 bilgi = sirket_bilgileri.get(sembol, {})
                 hisseler_listesi.append({
-                    "id": i + 1,
+                    "id": i + ilk_id,
                     "sembol": sembol,
                     "ad": bilgi.get("ad", sembol),
                     "sektor": bilgi.get("sektor", ""),
@@ -107,6 +108,28 @@ def get_hisseler():
         if veri:
             hisseler_cache["veri"] = veri
             hisseler_cache["zaman"] = time.monotonic()
+        return veri
+
+# Endeksten çıkan ama portföyde duran hisseler piyasa listesinde yer almaz.
+# Frontend bu hisseleri sorar, fiyatları ve satış için gereken bilgiler aynı biçimde döner.
+ek_hisseler_cache: dict[tuple[str, ...], tuple[float, list]] = {}
+ek_hisseler_kilit = threading.Lock()
+
+
+@app.get("/api/hisseler/ek")
+def get_ek_hisseler(semboller: str = ""):
+    istenen = tuple(sirket_listesi.ek_sembolleri_ayikla(semboller, list(BIST_HISSELER)))
+    if not istenen:
+        return []
+    with ek_hisseler_kilit:
+        kayit = ek_hisseler_cache.get(istenen)
+        if kayit and time.monotonic() - kayit[0] < HISSELER_CACHE_SURESI:
+            return kayit[1]
+        # Kimlikler piyasa listesindekilerle çakışmasın diye 1000'den başlar.
+        veri = hisseleri_cek(list(istenen), ilk_id=1001)
+        if veri:
+            ek_hisseler_cache.clear()
+            ek_hisseler_cache[istenen] = (time.monotonic(), veri)
         return veri
 
 # Her dönem için yfinance'den istenecek aralık ve mum sıklığı.

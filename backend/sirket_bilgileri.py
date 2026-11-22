@@ -76,6 +76,18 @@ def endeks_uyelerini_ayikla(sayfa: str, kod: str = ENDEKS_KODU) -> list[str]:
     return sorted(semboller)
 
 
+# Portföyde olup endekste olmayan hisselerin sorgusu için. Sınır, tek istekte çok hisse çekilmesini önler.
+EK_HISSE_SINIRI = 20
+EK_SEMBOL = re.compile(r"^[A-Z0-9]{2,10}$")
+
+
+def ek_sembolleri_ayikla(metin: str, endeks: list[str]) -> list[str]:
+    """Virgülle ayrılmış sembollerden geçerli olanları, endekste olmayanları tekrarsız ve sıralı olarak döner."""
+    endeks_kumesi = set(endeks)
+    semboller = {s.strip().upper() for s in metin.split(",")}
+    return sorted(s for s in semboller if EK_SEMBOL.match(s) and s not in endeks_kumesi)[:EK_HISSE_SINIRI]
+
+
 def sayfa_indir(adres: str) -> str:
     istek = urllib.request.Request(adres, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(istek, timeout=30) as yanit:

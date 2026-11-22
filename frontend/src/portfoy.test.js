@@ -8,6 +8,7 @@ import {
   donemKari,
   donemKarSerisi,
   donemBasinaKadarDoldur,
+  endeksDisiSemboller,
   enFazlaLot,
   isaretliTl,
   isaretliYuzde,
@@ -98,6 +99,24 @@ describe('satimUygula', () => {
     const portfoy = [hisse('A', 5, 100)];
     satimUygula(portfoy, 'A', 2);
     expect(portfoy[0].lot).toBe(5);
+  });
+});
+
+// Endeksten çıkan portföy hisselerinin bulunması.
+describe('endeksDisiSemboller', () => {
+  const hisseler = [{ sembol: 'THYAO' }, { sembol: 'AKBNK' }];
+
+  it('piyasa listesinde olmayan portföy hisselerini sıralı ve tekrarsız verir', () => {
+    const portfoy = [{ sembol: 'ZZZ' }, { sembol: 'THYAO' }, { sembol: 'ASUZU' }, { sembol: 'ZZZ' }];
+    expect(endeksDisiSemboller(portfoy, hisseler)).toEqual(['ASUZU', 'ZZZ']);
+  });
+
+  it('hepsi listedeyse boş döner', () => {
+    expect(endeksDisiSemboller([{ sembol: 'AKBNK' }], hisseler)).toEqual([]);
+  });
+
+  it('piyasa listesi henüz gelmediyse hiçbirini saymaz', () => {
+    expect(endeksDisiSemboller([{ sembol: 'ASUZU' }], [])).toEqual([]);
   });
 });
 

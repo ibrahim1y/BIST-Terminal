@@ -51,6 +51,14 @@ export const satimUygula = (portfoy, sembol, miktar) => {
 //En son alınan fiyatı, kayıt yoksa son işlem fiyatını döndürür.
 export const sonFiyatBul = (item, sonFiyatlar) => sonFiyatlar[item.sembol] ?? item.fiyat;
 
+// Portföyde olup piyasa listesinde olmayan, yani endeksten çıkmış hisseler.
+// Liste henüz gelmediyse hiçbiri sayılmaz, böylece bütün portföy boşuna ayrıca sorulmaz.
+export const endeksDisiSemboller = (portfoy, hisseler) => {
+  if (hisseler.length === 0) return [];
+  const listede = new Set(hisseler.map(h => h.sembol));
+  return [...new Set(portfoy.map(p => p.sembol))].filter(s => !listede.has(s)).sort();
+};
+
 //Tek hissenin kâr/zararını hesaplar.
 export const karZararHesapla = (item, fiyat) => ({
   karZarar: (fiyat - item.maliyet) * item.lot,

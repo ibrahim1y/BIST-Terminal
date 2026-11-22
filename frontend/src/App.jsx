@@ -14,6 +14,8 @@ import {
   // Kâr/Zarar grafiğini üst şeritle aynı döneme bağlar.
   donemKarSerisi,
   donemBasinaKadarDoldur,
+  // Endeksten çıkan portföy hisselerini bulmak için.
+  endeksDisiSemboller,
   // Seçili hissenin dönem değişimi.
   donemDegisimi,
   // Yeni sayfa düzeninin yardımcıları.
@@ -304,6 +306,8 @@ function App() {
   // Uygulama portföy sekmesiyle açılır.
   const [aktifSekme, setAktifSekme] = useState('portfoy'); 
   const [hisseler, setHisseler] = useState([]);
+  // Portföyde olup endekste olmayan hisselerin piyasa bilgisi.
+  const [ekHisseler, setEkHisseler] = useState([]);
   //Piyasa verisi alınmamasını bu state kontrol edecek.
   const [piyasaHatasi, setPiyasaHatasi] = useState(false);
   const [aramaMetni, setAramaMetni] = useState('');
@@ -442,6 +446,35 @@ function App() {
     return () => clearInterval(intervalId); // Bellek sızıntısını önle
   }, []);
 
+  // Endeksten çıkan ama portföyde duran hisseler piyasa listesinde gelmez.
+  // Bu hisseler her piyasa güncellemesinden sonra ayrıca sorulur, fiyatları ve satış bilgileri güncel kalır.
+  const endeksDisi = endeksDisiSemboller(portfoy, hisseler).join(',');
+  useEffect(() => {
+    if (!endeksDisi) return;
+    let iptal = false;
+    fetch(`http://127.0.0.1:8000/api/hisseler/ek?semboller=${encodeURIComponent(endeksDisi)}`)
+      .then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then(data => {
+        if (iptal || !Array.isArray(data)) return;
+        setEkHisseler(data);
+        setSonFiyatlar(onceki => ({ ...onceki, ...Object.fromEntries(data.map(h => [h.sembol, h.fiyat])) }));
+      })
+      .catch(error => {
+        if (!iptal) console.error('Endeks dışı hisse verisi alınamadı:', error);
+      });
+    return () => { iptal = true; };
+  }, [endeksDisi, hisseler]);
+
+  // Fiyat ve satış için kullanılan liste. Piyasa listesi ve sekmeler yalnızca endeks hisselerini gösterir.
+  // Artık portföyde olmayan ya da endekse geri dönen hisselerin eski kaydı kullanılmaz.
+  const tumHisseler = useMemo(() => {
+    const disarida = new Set(endeksDisi.split(','));
+    return [...hisseler, ...ekHisseler.filter(h => disarida.has(h.sembol))];
+  }, [hisseler, ekHisseler, endeksDisi]);
+
   useEffect(() => {
     if (seciliHisse) {
       const sembol = seciliHisse.sembol;
@@ -531,7 +564,8 @@ function App() {
   }, [aktifSekme, islemGecmisi]);
 
   // Seçilen hissenin fiyatının güncel piyasadan okunması için yeni bir değişken. Öncesinde modal açıkken değer güncellenmiyordu. 
-  const seciliFiyat = hisseler.find(h => h.sembol === seciliHisse?.sembol)?.fiyat ?? seciliHisse?.fiyat;
+  // Seçili hissenin fiyatı, günlük değişimi ve özeti endeks dışı hisseler için de ek listeden okunur.
+  const seciliFiyat = tumHisseler.find(h => h.sembol === seciliHisse?.sembol)?.fiyat ?? seciliHisse?.fiyat;
 
   // Pencere kalktığı için işlemden sonra hisse seçili kalır, yalnızca form temizlenir.
   const islemFormunuTemizle = () => {
@@ -549,12 +583,12 @@ function App() {
     hisseSec(hisse);
     if (window.innerWidth < 1280) window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-  const seciliGuncel = hisseler.find(h => h.sembol === seciliHisse?.sembol) ?? seciliHisse;
+  const seciliGuncel = tumHisseler.find(h => h.sembol === seciliHisse?.sembol) ?? seciliHisse;
   const enCokYukselenler = [...hisseler].filter(h => h.degisim > 0).sort((a, b) => b.degisim - a.degisim).slice(0, 5);
   const enCokDusenler = [...hisseler].filter(h => h.degisim < 0).sort((a, b) => a.degisim - b.degisim).slice(0, 5);
 
   const eldekiLot = portfoy.find(p => p.sembol === seciliHisse?.sembol)?.lot ?? 0;
-  const seciliDegisim = hisseler.find(h => h.sembol === seciliHisse?.sembol)?.degisim ?? seciliHisse?.degisim ?? 0;
+  const seciliDegisim = tumHisseler.find(h => h.sembol === seciliHisse?.sembol)?.degisim ?? seciliHisse?.degisim ?? 0;
   // Seçili hisse dönem değişimini gösterir. 1G önceki kapanışa göre günlük değişimdir, grafik yüklenirken değer gösterilmez.
   const grafikHazir = grafikSonucu.sembol === seciliHisse?.sembol && grafikSonucu.donem === grafikDonemi;
   const seciliDonemDegisimi = grafikDonemi === '1g' ? seciliDegisim : (grafikHazir ? donemDegisimi(grafikSonucu.veri, seciliFiyat) : null);
@@ -618,7 +652,8 @@ function App() {
 
   //Portföy değeri otomatik olarak güncellenir.
   //Tüm hisseler en son alınan fiyatla hesaplanır; kayıt yoksa son işlem fiyatı kullanılır.
-  const fiyatEskiMi = item => piyasaHatasi || !hisseler.some(h => h.sembol === item.sembol);
+  // Endeks dışı hisse ayrıca güncellendiyse "son veri" sayılmaz.
+  const fiyatEskiMi = item => piyasaHatasi || !tumHisseler.some(h => h.sembol === item.sembol);
   const eskiFiyatSayisi = portfoy.filter(fiyatEskiMi).length;
 
   //Toplamlar portfoyOzeti fonksiyonundan geliyor.
@@ -944,7 +979,8 @@ function App() {
                     </thead>
                     <tbody>
                       {portfoy.map((item, index) => {
-                        const guncelVeri = hisseler.find(h => h.sembol === item.sembol);
+                        // Endeksten çıkan hisse de satılabilsin diye ek liste de aranır.
+                        const guncelVeri = tumHisseler.find(h => h.sembol === item.sembol);
                         //Satırın fiyatı ve kâr/zararı portfoy.js dosyasından gelir.
                         const guncelFiyat = sonFiyatBul(item, sonFiyatlar);
                         const { karZarar, karZararYuzde } = karZararHesapla(item, guncelFiyat);

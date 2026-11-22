@@ -7,6 +7,8 @@ from pathlib import Path
 from sirket_bilgileri import ISY_ADRESI, KAP_ADRESI, adlari_ayikla, eksikleri_tamamla, sektorleri_ayikla, tr_baslik
 # Endeks listesinin otomatik güncellenmesi için eklendi.
 from sirket_bilgileri import endeks_uyelerini_ayikla, endeksi_guncelle, endeksi_yukle
+# Endeks dışındaki portföy hisselerinin sorgusu için eklendi.
+from sirket_bilgileri import EK_HISSE_SINIRI, ek_sembolleri_ayikla
 
 ISY_SAYFASI = """
 <option value="THYAO">THYAO | Türk Hava Yolları</option>
@@ -148,6 +150,22 @@ class EndeksTestleri(unittest.TestCase):
         semboller = ["ESKI"]
         endeksi_yukle(semboller, self.dosya)
         self.assertEqual(semboller, ["ESKI"])
+
+
+# Ek hisse sorgusunun sembol ayıklaması.
+class EkSembolTestleri(unittest.TestCase):
+    def test_endekstekiler_gecersizler_ve_tekrarlar_atilir(self):
+        self.assertEqual(
+            ek_sembolleri_ayikla("asuzu, THYAO,KOZAL,,X,../x,ASUZU", ["THYAO"]),
+            ["ASUZU", "KOZAL"],
+        )
+
+    def test_bos_sorgu_bos_liste(self):
+        self.assertEqual(ek_sembolleri_ayikla("", ["THYAO"]), [])
+
+    def test_en_fazla_sinir_kadar_hisse_doner(self):
+        metin = ",".join(f"HS{i:03d}" for i in range(50))
+        self.assertEqual(len(ek_sembolleri_ayikla(metin, [])), EK_HISSE_SINIRI)
 
 
 if __name__ == "__main__":
