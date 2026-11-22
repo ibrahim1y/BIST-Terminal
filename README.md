@@ -4,8 +4,11 @@ Borsa İstanbul hisselerini izlemek ve sanal alım-satım yapmak için bir web u
 
 ## Özellikler
 
-- Hisse listesi, arama ve günlük değişim
-- Mum ve çizgi hisse grafikleri, 1G'den 5Y'ye dönem seçimi
+- Hisse listesi, arama, favoriler, yükselen ve düşen sekmeleri, mini grafikler
+- Mum ve çizgi hisse grafikleri, 1G'den 5Y'ye dönem seçimi, tam ekran
+- Hacim ve teknik göstergeler: SMA, EMA, Bollinger, RSI, MACD
+- Hisse özeti, piyasa genişliği, en çok yükselen ve düşen hisseler
+- Endeks, döviz ve altın şeridi
 - Sanal alım-satım ve ağırlıklı ortalama maliyet
 - Portföy özeti, açık ve gerçekleşen kâr/zarar, dağılım grafiği
 - Portföy grafiği: toplam kâr/zarar ve portföy değeri görünümleri
@@ -83,7 +86,8 @@ python -m unittest
 
 | Uç | Açıklama |
 |---|---|
-| `GET /api/hisseler` | Hisse listesi, fiyat ve günlük değişim (30 saniye önbellekli) |
+| `GET /api/hisseler` | Hisse listesi: fiyat, günlük değişim, gün özeti, hacim, mini grafik verisi, şirket adı ve sektör (30 saniye önbellekli) |
+| `GET /api/gostergeler` | BIST 100, BIST 30, BIST Banka, Dolar/TL, Euro/TL ve ons altın (30 saniye önbellekli) |
 | `GET /api/grafik/{sembol}` | Hissenin mum verisi. `donem` parametresi: `1g`, `1h`, `1a`, `3a`, `1y`, `5y` (varsayılan `3a`) |
 | `POST /api/portfoy-analiz` | İşlem geçmişinden ağırlıklı ortalama maliyet, açık ve gerçekleşen kâr ile günlük zaman serisi |
 | `POST /api/portfoy-analiz/gun-ici` | Aynı analiz, gün içi seriyle. `donem`: `1g` (2 dakikalık), `1h`, `1a`, `3a`, `1y` (saatlik) |
@@ -92,6 +96,7 @@ python -m unittest
 ## Notlar
 
 - Fiyatlar Yahoo Finance'ten alınır ve gecikmeli olabilir.
+- Şirket adları ve sektörler `backend/sirketler.json` dosyasındadır. BIST 100 listesi değişince yeni hisseler bu dosyaya da eklenmelidir.
 - Portföy, işlem geçmişi, nakit hareketleri ve son fiyatlar yalnızca tarayıcının `localStorage` alanında tutulur. Tarayıcı verileri silinirse bunlar da silinir.
 - Para yatırma simülasyondur, gerçek para kullanılmaz.
 - Bu proje yatırım tavsiyesi vermez.

@@ -6,6 +6,10 @@ import time
 import yfinance as yf
 # Portföy analizi endpoint'i için eklendi.
 from typing import Any
+import json
+from pathlib import Path
+import pandas as pd
+from portfoy_analiz import gun_ozeti, hisse_tablosu
 from portfoy_analiz import DONEM_SIKLIKLARI, FiyatVerisiHatasi, IslemHatasi, portfoy_analizi, portfoy_donem_kari, portfoy_gun_ici_analizi, kapanis_kolonu, seans_tablosu
 
 app = FastAPI()
@@ -31,6 +35,11 @@ BIST_HISSELER = [
     "TCELL", "TCKRC", "THYAO", "TKFEN", "TOASO", "TRALT", "TRENJ", "TRGYO", "TRMET", "TSKB",
     "TTKOM", "TTRAK", "TUKAS", "TUPRS", "TURSG", "ULKER", "VAKBN", "VESTL", "YKBNK", "ZOREN"
 ]
+
+# Şirket adları İş Yatırım'ın hisse listesinden, sektörler KAP'ın sektör sayfasından alınıp sirketler.json dosyasına yazıldı.
+# BIST 100 listesi değişince bu dosyaya yeni hisselerin adı ve sektörü de eklenmeli; eksik hisse sembolüyle gösterilir.
+with open(Path(__file__).with_name("sirketler.json"), encoding="utf-8") as dosya:
+    sirket_bilgileri: dict[str, dict[str, str]] = json.load(dosya)
 
 # Hisse listesi için önbellek süresi ve bellekteki kayıt.
 HISSELER_CACHE_SURESI = 30  # saniye
@@ -60,12 +69,24 @@ def hisseleri_cek():
                 if onceki_fiyat > 0:
                     degisim = round(((son_fiyat - onceki_fiyat) / onceki_fiyat) * 100, 2)
                 
+                # Piyasa sayfasının özet paneli ve listedeki mini grafik için ek bilgiler.
+                saatlik_tablo = hisse_tablosu(saatlik, sembol_is)
+                ozet = gun_ozeti(saatlik_tablo, hisse_tablosu(gunluk, sembol_is), kapanislar.index[-1])
+                saatlik_kapanislar = saatlik_tablo["Close"].dropna() if "Close" in saatlik_tablo else pd.Series(dtype=float)
+                bilgi = sirket_bilgileri.get(sembol, {})
                 hisseler_listesi.append({
                     "id": i + 1,
                     "sembol": sembol,
-                    "ad": sembol,
+                    "ad": bilgi.get("ad", sembol),
+                    "sektor": bilgi.get("sektor", ""),
                     "fiyat": round(son_fiyat, 2),
                     "degisim": degisim,
+                    "onceki_kapanis": round(onceki_fiyat, 2),
+                    "acilis": None if ozet["acilis"] is None else round(ozet["acilis"], 2),
+                    "gun_yuksek": None if ozet["yuksek"] is None else round(ozet["yuksek"], 2),
+                    "gun_dusuk": None if ozet["dusuk"] is None else round(ozet["dusuk"], 2),
+                    "hacim": None if ozet["hacim"] is None else int(ozet["hacim"]),
+                    "gecmis": [round(float(f), 2) for f in saatlik_kapanislar.tail(40)] + [round(son_fiyat, 2)],
                 })
         except Exception as e:
             print(f"HATA - {sembol} verisi işlenemedi: {e}")
@@ -116,7 +137,9 @@ def get_grafik(sembol: str, donem: str = "3a"):
                 "open": round(float(row['Open']), 2),
                 "high": round(float(row['High']), 2),
                 "low": round(float(row['Low']), 2),
-                "close": round(float(row['Close']), 2)
+                "close": round(float(row['Close']), 2),
+                # Hacim çubukları için.
+                "volume": int(row['Volume']) if row['Volume'] == row['Volume'] else 0,
             })
         return grafik_verisi
     except Exception as e:
@@ -159,3 +182,48 @@ def post_portfoy_donem_kari(islemler: list[dict[str, Any]]):
     except FiyatVerisiHatasi as e:
         print(f"HATA - portföy dönem kârı fiyatları çekilemedi: {e}")
         raise HTTPException(status_code=503, detail="Fiyat verisi alınamadı")
+
+# Üstteki gösterge şeridi: endeksler, döviz ve altın. 30 saniye önbellekli.
+GOSTERGELER = [
+    ("XU100.IS", "BIST 100", 2),
+    ("XU030.IS", "BIST 30", 2),
+    ("XBANK.IS", "BIST BANKA", 2),
+    ("USDTRY=X", "DOLAR/TL", 4),
+    ("EURTRY=X", "EURO/TL", 4),
+    ("GC=F", "ONS ALTIN", 2),
+]
+gostergeler_cache = {"zaman": 0.0, "veri": []}
+gostergeler_kilit = threading.Lock()
+
+
+def gostergeleri_cek():
+    kodlar = [kod for kod, _, _ in GOSTERGELER]
+    saatlik = yf.download(kodlar, period="5d", interval="1h", auto_adjust=False, progress=False)
+    gunluk = yf.download(kodlar, period="5d", interval="1d", auto_adjust=False, progress=False)
+    seanslar = seans_tablosu(kapanis_kolonu(saatlik), kapanis_kolonu(gunluk))
+    sonuc = []
+    for kod, ad, ondalik in GOSTERGELER:
+        if kod not in seanslar.columns:
+            continue
+        fiyatlar = seanslar[kod].dropna()
+        if len(fiyatlar) < 2:
+            continue
+        son, onceki = float(fiyatlar.iloc[-1]), float(fiyatlar.iloc[-2])
+        sonuc.append({"ad": ad, "deger": round(son, ondalik), "ondalik": ondalik, "degisim": round((son - onceki) / onceki * 100, 2) if onceki else 0.0})
+    return sonuc
+
+
+@app.get("/api/gostergeler")
+def get_gostergeler():
+    with gostergeler_kilit:
+        if gostergeler_cache["veri"] and time.monotonic() - gostergeler_cache["zaman"] < HISSELER_CACHE_SURESI:
+            return gostergeler_cache["veri"]
+        try:
+            veri = gostergeleri_cek()
+        except Exception as e:
+            print(f"HATA - göstergeler çekilemedi: {e}")
+            veri = []
+        if veri:
+            gostergeler_cache["veri"] = veri
+            gostergeler_cache["zaman"] = time.monotonic()
+        return veri

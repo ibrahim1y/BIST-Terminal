@@ -1,0 +1,402 @@
+{
+  "AEFES": {
+    "ad": "Anadolu Efes",
+    "sektor": "Gıda, İçecek ve Tütün"
+  },
+  "AGHOL": {
+    "ad": "Anadolu Grubu Holding",
+    "sektor": "Holdingler ve Yatırım Şirketleri"
+  },
+  "AHGAZ": {
+    "ad": "Ahlatçı Doğalgaz",
+    "sektor": "Elektrik Gaz ve Buhar"
+  },
+  "AKBNK": {
+    "ad": "Akbank",
+    "sektor": "Bankalar"
+  },
+  "AKCNS": {
+    "ad": "Akçansa",
+    "sektor": "Taş ve Toprağa Dayalı"
+  },
+  "AKFYE": {
+    "ad": "Akfen Yenilenebilir Enerji",
+    "sektor": "Elektrik Gaz ve Buhar"
+  },
+  "AKSA": {
+    "ad": "Aksa",
+    "sektor": "Kimya İlaç Petrol Lastik ve Plastik Ürünler"
+  },
+  "AKSEN": {
+    "ad": "Aksa Enerji",
+    "sektor": "Elektrik Gaz ve Buhar"
+  },
+  "ALARK": {
+    "ad": "Alarko Holding",
+    "sektor": "Holdingler ve Yatırım Şirketleri"
+  },
+  "ALBRK": {
+    "ad": "Albaraka Türk",
+    "sektor": "Bankalar"
+  },
+  "ALTNY": {
+    "ad": "Altınay Savunma",
+    "sektor": "Savunma"
+  },
+  "ANHYT": {
+    "ad": "Anadolu Hayat Emeklilik",
+    "sektor": "Sigorta Şirketleri"
+  },
+  "ANSGR": {
+    "ad": "Anadolu Sigorta",
+    "sektor": "Sigorta Şirketleri"
+  },
+  "ARCLK": {
+    "ad": "Arçelik",
+    "sektor": "Metal Eşya Makine Elektrikli Cihazlar ve Ulaşım Araçları"
+  },
+  "ASELS": {
+    "ad": "Aselsan",
+    "sektor": "Savunma"
+  },
+  "ASTOR": {
+    "ad": "Astor Enerji",
+    "sektor": "Metal Eşya Makine Elektrikli Cihazlar ve Ulaşım Araçları"
+  },
+  "AYGAZ": {
+    "ad": "Aygaz",
+    "sektor": "Kimya İlaç Petrol Lastik ve Plastik Ürünler"
+  },
+  "BERA": {
+    "ad": "Bera Holding",
+    "sektor": "Holdingler ve Yatırım Şirketleri"
+  },
+  "BIMAS": {
+    "ad": "Bim Birleşik Mağazalar",
+    "sektor": "Perakende Ticaret"
+  },
+  "BINHO": {
+    "ad": "1000 Yatırımlar",
+    "sektor": "Holdingler ve Yatırım Şirketleri"
+  },
+  "BRSAN": {
+    "ad": "Borusan Birleşik Boru Fab.",
+    "sektor": "Ana Metal Sanayi"
+  },
+  "BRYAT": {
+    "ad": "Borusan Yatırım",
+    "sektor": "Holdingler ve Yatırım Şirketleri"
+  },
+  "BTCIM": {
+    "ad": "Batıçim",
+    "sektor": "Taş ve Toprağa Dayalı"
+  },
+  "CANTE": {
+    "ad": "Çan2 Termik",
+    "sektor": "Elektrik Gaz ve Buhar"
+  },
+  "CCOLA": {
+    "ad": "Coca-Cola İçecek",
+    "sektor": "Gıda, İçecek ve Tütün"
+  },
+  "CIMSA": {
+    "ad": "Çimsa",
+    "sektor": "Taş ve Toprağa Dayalı"
+  },
+  "CVKMD": {
+    "ad": "Cvk Maden",
+    "sektor": "Metal Cevheri Madenciliği"
+  },
+  "CWENE": {
+    "ad": "Cw Enerji",
+    "sektor": "Elektrik Gaz ve Buhar"
+  },
+  "DOAS": {
+    "ad": "Doğuş Otomotiv",
+    "sektor": "Toptan Ticaret"
+  },
+  "DOHOL": {
+    "ad": "Doğan Holding",
+    "sektor": "Holdingler ve Yatırım Şirketleri"
+  },
+  "ECILC": {
+    "ad": "Eczacıbaşı İlaç",
+    "sektor": "Holdingler ve Yatırım Şirketleri"
+  },
+  "ECZYT": {
+    "ad": "Eczacıbaşı Yatırım",
+    "sektor": "Holdingler ve Yatırım Şirketleri"
+  },
+  "EGEEN": {
+    "ad": "Ege Endüstri",
+    "sektor": "Metal Eşya Makine Elektrikli Cihazlar ve Ulaşım Araçları"
+  },
+  "EGGUB": {
+    "ad": "Ege Gübre",
+    "sektor": "Kimya İlaç Petrol Lastik ve Plastik Ürünler"
+  },
+  "EKGYO": {
+    "ad": "Emlak Konut GYO",
+    "sektor": "Gayrimenkul Yatırım Ortaklıkları"
+  },
+  "ENERY": {
+    "ad": "Enerya Enerji",
+    "sektor": "Elektrik Gaz ve Buhar"
+  },
+  "ENJSA": {
+    "ad": "Enerjisa Enerji",
+    "sektor": "Elektrik Gaz ve Buhar"
+  },
+  "ENKAI": {
+    "ad": "Enka İnşaat",
+    "sektor": "İnşaat ve Bayındırlık İşleri"
+  },
+  "ENTRA": {
+    "ad": "Ic Enterra Yenilenebilir",
+    "sektor": "Elektrik Gaz ve Buhar"
+  },
+  "EREGL": {
+    "ad": "Ereğli Demir Çelik",
+    "sektor": "Ana Metal Sanayi"
+  },
+  "EUREN": {
+    "ad": "Europen Endüstri",
+    "sektor": "Kimya İlaç Petrol Lastik ve Plastik Ürünler"
+  },
+  "FENER": {
+    "ad": "Fenerbahce Futbol",
+    "sektor": "Spor Faaliyetleri Eğlence ve Oyun Faaliyetleri"
+  },
+  "FROTO": {
+    "ad": "Ford Otosan",
+    "sektor": "Metal Eşya Makine Elektrikli Cihazlar ve Ulaşım Araçları"
+  },
+  "GARAN": {
+    "ad": "Garanti Bankası",
+    "sektor": "Bankalar"
+  },
+  "GLRMK": {
+    "ad": "Gülermak Ağır Sanayi",
+    "sektor": "İnşaat ve Bayındırlık İşleri"
+  },
+  "GLYHO": {
+    "ad": "Global Yatırım Holding",
+    "sektor": "Holdingler ve Yatırım Şirketleri"
+  },
+  "GRSEL": {
+    "ad": "Gürsel Taşımacılık",
+    "sektor": "Ulaştırma ve Depolama"
+  },
+  "GUBRF": {
+    "ad": "Gübre Fabrikaları",
+    "sektor": "Kimya İlaç Petrol Lastik ve Plastik Ürünler"
+  },
+  "GWIND": {
+    "ad": "Galata Wind Enerji",
+    "sektor": "Elektrik Gaz ve Buhar"
+  },
+  "HALKB": {
+    "ad": "Halkbank",
+    "sektor": "Bankalar"
+  },
+  "HEKTS": {
+    "ad": "Hektaş",
+    "sektor": "Kimya İlaç Petrol Lastik ve Plastik Ürünler"
+  },
+  "ISCTR": {
+    "ad": "İş Bankası (C)",
+    "sektor": "Bankalar"
+  },
+  "ISDMR": {
+    "ad": "İskenderun Demir Çelik",
+    "sektor": "Ana Metal Sanayi"
+  },
+  "ISMEN": {
+    "ad": "İş Yatırım",
+    "sektor": "Aracı Kurumlar"
+  },
+  "KARSN": {
+    "ad": "Karsan Otomotiv",
+    "sektor": "Metal Eşya Makine Elektrikli Cihazlar ve Ulaşım Araçları"
+  },
+  "KATMR": {
+    "ad": "Katmerciler Araç Üstü Ekipman",
+    "sektor": "Metal Eşya Makine Elektrikli Cihazlar ve Ulaşım Araçları"
+  },
+  "KCAER": {
+    "ad": "Kocaer Çelik Sanayi",
+    "sektor": "Ana Metal Sanayi"
+  },
+  "KCHOL": {
+    "ad": "Koç Holding",
+    "sektor": "Holdingler ve Yatırım Şirketleri"
+  },
+  "KORDS": {
+    "ad": "Kordsa Teknik Tekstil",
+    "sektor": "Tekstil, Giyim Eşyası ve Deri"
+  },
+  "KRDMD": {
+    "ad": "Kardemir (D)",
+    "sektor": "Ana Metal Sanayi"
+  },
+  "LMKDC": {
+    "ad": "Limak Doğu Anadolu Çimento",
+    "sektor": "Taş ve Toprağa Dayalı"
+  },
+  "MAVI": {
+    "ad": "Mavi Giyim",
+    "sektor": "Perakende Ticaret"
+  },
+  "MGROS": {
+    "ad": "Migros",
+    "sektor": "Perakende Ticaret"
+  },
+  "MPARK": {
+    "ad": "MLP Sağlık Hizmetleri",
+    "sektor": "İnsan Sağlığı ve Sosyal Hizmetler"
+  },
+  "OBAMS": {
+    "ad": "Oba Makarnacılık",
+    "sektor": "Gıda, İçecek ve Tütün"
+  },
+  "ODAS": {
+    "ad": "Odaş Elektrik Üretim",
+    "sektor": "Elektrik Gaz ve Buhar"
+  },
+  "OTKAR": {
+    "ad": "Otokar",
+    "sektor": "Metal Eşya Makine Elektrikli Cihazlar ve Ulaşım Araçları"
+  },
+  "OYAKC": {
+    "ad": "Oyak Çimento",
+    "sektor": "Taş ve Toprağa Dayalı"
+  },
+  "PAHOL": {
+    "ad": "Pasifik Holding",
+    "sektor": "Holdingler ve Yatırım Şirketleri"
+  },
+  "PETKM": {
+    "ad": "Petkim",
+    "sektor": "Kimya İlaç Petrol Lastik ve Plastik Ürünler"
+  },
+  "PGSUS": {
+    "ad": "Pegasus Hava Taşımacılığı",
+    "sektor": "Ulaştırma ve Depolama"
+  },
+  "RGYAS": {
+    "ad": "Rönesans Gayrimenkul",
+    "sektor": "Gayrimenkul Faaliyetleri"
+  },
+  "RYSAS": {
+    "ad": "Reysaş Taşımacılık",
+    "sektor": "Ulaştırma ve Depolama"
+  },
+  "SAHOL": {
+    "ad": "Sabancı Holding",
+    "sektor": "Holdingler ve Yatırım Şirketleri"
+  },
+  "SASA": {
+    "ad": "Sasa Polyester",
+    "sektor": "Kimya İlaç Petrol Lastik ve Plastik Ürünler"
+  },
+  "SISE": {
+    "ad": "Şişecam",
+    "sektor": "Holdingler ve Yatırım Şirketleri"
+  },
+  "SNGYO": {
+    "ad": "Sinpas GYO",
+    "sektor": "Gayrimenkul Yatırım Ortaklıkları"
+  },
+  "SOKM": {
+    "ad": "Şok Marketler",
+    "sektor": "Perakende Ticaret"
+  },
+  "TABGD": {
+    "ad": "Tab Gıda",
+    "sektor": "Yiyecek ve İçecek Hizmetleri"
+  },
+  "TAVHL": {
+    "ad": "TAV Holding",
+    "sektor": "Holdingler ve Yatırım Şirketleri"
+  },
+  "TCELL": {
+    "ad": "Turkcell",
+    "sektor": "Telekomünikasyon"
+  },
+  "TCKRC": {
+    "ad": "Kıraç Galvaniz",
+    "sektor": "Ana Metal Sanayi"
+  },
+  "THYAO": {
+    "ad": "Türk Hava Yolları",
+    "sektor": "Ulaştırma ve Depolama"
+  },
+  "TKFEN": {
+    "ad": "Tekfen Holding",
+    "sektor": "Holdingler ve Yatırım Şirketleri"
+  },
+  "TOASO": {
+    "ad": "Tofaş Fabrika",
+    "sektor": "Metal Eşya Makine Elektrikli Cihazlar ve Ulaşım Araçları"
+  },
+  "TRALT": {
+    "ad": "Türk Altın",
+    "sektor": "Metal Cevheri Madenciliği"
+  },
+  "TRENJ": {
+    "ad": "TR Doğal Enerji Kaynakları",
+    "sektor": "Ham Petrol ve Doğal Gaz Çıkartılması"
+  },
+  "TRGYO": {
+    "ad": "Torunlar GYO",
+    "sektor": "Gayrimenkul Yatırım Ortaklıkları"
+  },
+  "TRMET": {
+    "ad": "TR Anadolu Metal",
+    "sektor": "Metal Cevheri Madenciliği"
+  },
+  "TSKB": {
+    "ad": "Türkiye Sınai Kalkınma Bankası",
+    "sektor": "Bankalar"
+  },
+  "TTKOM": {
+    "ad": "Türk Telekom",
+    "sektor": "Telekomünikasyon"
+  },
+  "TTRAK": {
+    "ad": "Türk Traktör",
+    "sektor": "Metal Eşya Makine Elektrikli Cihazlar ve Ulaşım Araçları"
+  },
+  "TUKAS": {
+    "ad": "Tukaş",
+    "sektor": "Gıda, İçecek ve Tütün"
+  },
+  "TUPRS": {
+    "ad": "Tüpraş",
+    "sektor": "Kimya İlaç Petrol Lastik ve Plastik Ürünler"
+  },
+  "TURSG": {
+    "ad": "Türkiye Sigorta",
+    "sektor": "Sigorta Şirketleri"
+  },
+  "ULKER": {
+    "ad": "Ülker Bisküvi",
+    "sektor": "Gıda, İçecek ve Tütün"
+  },
+  "VAKBN": {
+    "ad": "Vakıfbank",
+    "sektor": "Bankalar"
+  },
+  "VESTL": {
+    "ad": "Vestel Elektronik",
+    "sektor": "Metal Eşya Makine Elektrikli Cihazlar ve Ulaşım Araçları"
+  },
+  "YKBNK": {
+    "ad": "Yapı Kredi Bankası",
+    "sektor": "Bankalar"
+  },
+  "ZOREN": {
+    "ad": "Zorlu Enerji",
+    "sektor": "Elektrik Gaz ve Buhar"
+  }
+}

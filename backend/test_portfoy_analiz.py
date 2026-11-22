@@ -4,7 +4,7 @@ import unittest
 
 import pandas as pd
 
-from portfoy_analiz import IslemHatasi, donem_fiyat_tablosu, donem_kari_olustur, donem_pozisyonlari, elde_kalan_islemler, elde_kalan_seriyi_ekle, gun_ici_seri_olustur, gunluk_seri_olustur, islemleri_coz, seans_kapanislari, seans_tablosu
+from portfoy_analiz import IslemHatasi, gun_ozeti, donem_fiyat_tablosu, donem_kari_olustur, donem_pozisyonlari, elde_kalan_islemler, elde_kalan_seriyi_ekle, gun_ici_seri_olustur, gunluk_seri_olustur, islemleri_coz, seans_kapanislari, seans_tablosu
 
 
 def islem(date, tip, quantity, price, ticker="THYAO.IS"):
@@ -177,6 +177,7 @@ class UcDurumTestleri(unittest.TestCase):
                 islemleri_coz([kayit])
 
 
+# 
 # 1G görünümünün gün içi hesabı.
 class GunIciTestleri(unittest.TestCase):
     def gun_ici(self, kayitlar, fiyatlar):
@@ -507,6 +508,30 @@ class MumZamaniTestleri(unittest.TestCase):
         fiyatlar = pd.DataFrame({"THYAO.IS": [100.0, 110.0]}, index=pd.to_datetime(["2026-11-05T10:30:00", "2026-11-05T11:30:00"]))
         sonuc = gun_ici_seri_olustur(islemleri_coz([islem("2026-11-05T10:45:00", "BUY", 10, 105)]), fiyatlar, pd.Timedelta(0))
         self.assertEqual([(n["date"][11:16], n["total_invested"]) for n in sonuc["series"]], [("10:30", 0), ("11:30", 1050)])
+
+
+# Piyasa sayfası yardımcıları.
+class PiyasaYardimcilariTestleri(unittest.TestCase):
+    def tablo(self, satirlar):
+        return pd.DataFrame(
+            [s[1:] for s in satirlar], columns=["Open", "High", "Low", "Close", "Volume"], index=pd.to_datetime([s[0] for s in satirlar])
+        )
+
+    def test_gunluk_satir_varsa_o_kullanilir(self):
+        gunluk = self.tablo([("2026-11-12", 315.5, 320.0, 315.5, 318.75, 5761712)])
+        self.assertEqual(gun_ozeti(pd.DataFrame(), gunluk, pd.Timestamp("2026-11-12")), {"acilis": 315.5, "yuksek": 320.0, "dusuk": 315.5, "hacim": 5761712})
+
+    def test_gunluk_satir_eksikse_saatlik_mumlardan_hesaplanir(self):
+        saatlik = self.tablo([
+            ("2026-11-11T10:30:00", 312.0, 316.0, 311.0, 315.0, 1000),
+            ("2026-11-11T11:30:00", 315.0, 318.0, 314.0, 317.0, 500),
+            ("2026-11-12T10:30:00", 1.0, 1.0, 1.0, 1.0, 1),
+        ])
+        gunluk = self.tablo([("2026-11-10", 311.5, 318.25, 311.0, 313.75, 10)])
+        self.assertEqual(gun_ozeti(saatlik, gunluk, pd.Timestamp("2026-11-11")), {"acilis": 312.0, "yuksek": 318.0, "dusuk": 311.0, "hacim": 1500})
+
+    def test_veri_yoksa_bos_doner(self):
+        self.assertIsNone(gun_ozeti(pd.DataFrame(), pd.DataFrame(), pd.Timestamp("2026-11-12"))["acilis"])
 
 
 if __name__ == "__main__":

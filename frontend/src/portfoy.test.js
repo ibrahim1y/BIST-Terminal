@@ -400,7 +400,7 @@ describe('seriyiDonemeGoreKes', () => {
     expect(seriyiDonemeGoreKes(seri, '1h').map(n => n.date)).toEqual(['2026-10-25', '2026-10-31']);
   });
 
-  // 1G serisi backend'den yalnızca son seans olarak gelir, kesilmez.
+  // Gün içi seriler backend'den dönemine göre kesilmiş gelir, 1G tekrar kesilmez.
   it('1G serisine dokunmaz', () => {
     expect(seriyiDonemeGoreKes(seri, '1g')).toEqual(seri);
   });

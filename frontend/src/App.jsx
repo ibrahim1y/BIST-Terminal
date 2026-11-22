@@ -44,6 +44,11 @@ import {
   yeterliBakiyeVarMi,
 } from './portfoy';
 import PortfoyDagilimi from './PortfoyDagilimi';
+// Piyasa sayfasının yeni bileşenleri ve teknik göstergeler.
+import GostergeSeridi from './GostergeSeridi';
+import HisseListesi from './HisseListesi';
+import { EnCokDegisenler, HisseOzeti, PiyasaGenisligi } from './PiyasaOzeti';
+import { bollinger, ema, macd, rsi, sma } from './teknik';
 import PortfoyGrafigi from './PortfoyGrafigi';
 import PortfoyOzetSeridi from './PortfoyOzetSeridi';
 
@@ -57,14 +62,66 @@ const GRAFIK_DONEMLERI = [
   { kod: '5y', ad: '5Y', gunIci: false },
 ];
 
+// Hisse grafiğinde açılıp kapatılabilen göstergeler ve renkleri.
+const GRAFIK_GOSTERGELERI = [
+  { kod: 'sma20', ad: 'SMA 20' },
+  { kod: 'sma50', ad: 'SMA 50' },
+  { kod: 'ema20', ad: 'EMA 20' },
+  { kod: 'bollinger', ad: 'Bollinger' },
+  { kod: 'hacim', ad: 'Hacim' },
+  { kod: 'rsi', ad: 'RSI' },
+  { kod: 'macd', ad: 'MACD' },
+];
+const GOSTERGE_RENKLERI = { sma20: '#fbbf24', sma50: '#38bdf8', ema20: '#e879f9', bollinger: '#94a3b8', rsi: '#a78bfa', macd: '#38bdf8', sinyal: '#fbbf24' };
+// Hacim, RSI ve MACD grafiğin altında üst üste bantlarda çizilir. Her bant grafik yüksekliğinin bu kadarını kaplar.
+const ALT_BANT_YUKSEKLIGI = 0.18;
+const fiyatYaz = (deger) => (deger == null ? '—' : deger.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+const kisaSayi = new Intl.NumberFormat('tr-TR', { notation: 'compact', maximumFractionDigits: 1 });
+
 //Boyut Duyarlı (Responsive) ve Güvenli TradingView Bileşeni
 //Grafik türü ve saat gösterimi dışarıdan seçilir.
-const TradingViewChart = ({ data, tip, saatGoster }) => {
+const TradingViewChart = ({ data, tip, saatGoster, gostergeler = [] }) => {
   const chartContainerRef = useRef();
   //Grafik saklanır; veri değişince baştan kurulmaz, yalnızca verisi güncellenir.
   const chartRef = useRef(null);
   const seriRef = useRef(null);
+  const ekSeriRef = useRef({});
   const ilkZamanRef = useRef(null);
+  const [imlec, setImlec] = useState(null);
+  const gostergeAnahtari = gostergeler.join(',');
+
+  // Temiz veri ve gösterge değerleri bir kez hesaplanır, grafik ve bilgi satırı aynı değerleri kullanır.
+  const hazir = useMemo(() => {
+    // Veri yoksa veya array boş ise grafiğin çökmemesi için
+    if (!Array.isArray(data) || data.length === 0) return null;
+
+    // API'den gelen verileri zorla sayıya çevirir. String veri gelme ihtimaline karşı alınan önlem.
+    //Bozuk verileri filtreleyip eskiden yeniye sıralıyoruz.
+    const temizVeri = data
+      .map(d => ({
+        time: d.time,
+        open: Number(d.open),
+        high: Number(d.high),
+        low: Number(d.low),
+        close: Number(d.close),
+        volume: Number(d.volume ?? 0)
+      }))
+      .filter(d => !isNaN(d.open) && !isNaN(d.high) && !isNaN(d.low) && !isNaN(d.close))
+      .filter((v, i, a) => a.findIndex(t => t.time === v.time) === i)
+      .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
+
+    if (temizVeri.length === 0) return null;
+    const kapanislar = temizVeri.map(d => d.close);
+    return {
+      temizVeri,
+      sma20: sma(kapanislar, 20),
+      sma50: sma(kapanislar, 50),
+      ema20: ema(kapanislar, 20),
+      bollinger: bollinger(kapanislar),
+      rsi: rsi(kapanislar),
+      macd: macd(kapanislar),
+    };
+  }, [data]);
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
@@ -81,11 +138,14 @@ const TradingViewChart = ({ data, tip, saatGoster }) => {
       },
       width: chartContainerRef.current.clientWidth || 450,
       height: chartContainerRef.current.clientHeight || 250,
+      localization: { locale: 'tr-TR' },
       rightPriceScale: { borderColor: '#ffffff' },
       timeScale: {
         borderColor: '#ffffff',
         timeVisible: saatGoster,
         secondsVisible: false,
+        // Grafik büyüyüp küçülünce mum aralığı değil görünen tarih aralığı korunur, tam ekranda boş alan kalmaz.
+        lockVisibleTimeRangeOnResize: true,
       },
     });
 
@@ -101,8 +161,47 @@ const TradingViewChart = ({ data, tip, saatGoster }) => {
         wickDownColor: GRAFIK_KIRMIZI,
       });
     }
+
+    // Açık göstergelerin serileri. Hacim, RSI ve MACD kendi bantlarında, diğerleri fiyatın üstünde çizilir.
+    const acik = new Set(gostergeAnahtari ? gostergeAnahtari.split(',') : []);
+    const altBantlar = ['hacim', 'rsi', 'macd'].filter(kod => acik.has(kod));
+    chart.priceScale('right').applyOptions({ scaleMargins: { top: 0.12, bottom: altBantlar.length * ALT_BANT_YUKSEKLIGI + 0.04 } });
+    const bant = (kod) => {
+      const sira = altBantlar.length - 1 - altBantlar.indexOf(kod);
+      return { top: 1 - (sira + 1) * ALT_BANT_YUKSEKLIGI + 0.03, bottom: sira * ALT_BANT_YUKSEKLIGI };
+    };
+    const cizgi = (renk, ek = {}) => chart.addLineSeries({ color: renk, lineWidth: 1, lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false, ...ek });
+    const ekler = {};
+    if (acik.has('hacim')) {
+      ekler.hacim = chart.addHistogramSeries({ priceScaleId: 'hacim', priceFormat: { type: 'volume' }, lastValueVisible: false, priceLineVisible: false });
+      chart.priceScale('hacim').applyOptions({ scaleMargins: bant('hacim') });
+    }
+    if (acik.has('sma20')) ekler.sma20 = cizgi(GOSTERGE_RENKLERI.sma20, { lineWidth: 1.5 });
+    if (acik.has('sma50')) ekler.sma50 = cizgi(GOSTERGE_RENKLERI.sma50, { lineWidth: 1.5 });
+    if (acik.has('ema20')) ekler.ema20 = cizgi(GOSTERGE_RENKLERI.ema20, { lineWidth: 1.5 });
+    if (acik.has('bollinger')) {
+      ekler.bbUst = cizgi(GOSTERGE_RENKLERI.bollinger, { lineStyle: 2 });
+      ekler.bbOrta = cizgi(GOSTERGE_RENKLERI.bollinger);
+      ekler.bbAlt = cizgi(GOSTERGE_RENKLERI.bollinger, { lineStyle: 2 });
+    }
+    if (acik.has('rsi')) {
+      ekler.rsi = cizgi(GOSTERGE_RENKLERI.rsi, { priceScaleId: 'rsi', lineWidth: 1.5 });
+      chart.priceScale('rsi').applyOptions({ scaleMargins: bant('rsi') });
+      // 70 üstü aşırı alım, 30 altı aşırı satım bölgesi.
+      [70, 30].forEach(seviye => ekler.rsi.createPriceLine({ price: seviye, color: '#64748b', lineWidth: 1, lineStyle: 2, axisLabelVisible: false }));
+    }
+    if (acik.has('macd')) {
+      ekler.macdHistogram = chart.addHistogramSeries({ priceScaleId: 'macd', lastValueVisible: false, priceLineVisible: false });
+      ekler.macd = cizgi(GOSTERGE_RENKLERI.macd, { priceScaleId: 'macd' });
+      ekler.sinyal = cizgi(GOSTERGE_RENKLERI.sinyal, { priceScaleId: 'macd' });
+      chart.priceScale('macd').applyOptions({ scaleMargins: bant('macd') });
+    }
+    ekSeriRef.current = ekler;
     chartRef.current = chart;
     ilkZamanRef.current = null;
+
+    // Bilgi satırı imlecin altındaki mumu gösterir, imleç yoksa son mumu.
+    chart.subscribeCrosshairMove(olay => setImlec(olay.point && olay.logical !== undefined ? Math.round(olay.logical) : null));
 
     //Pencere boyutu değiştiğinde grafik otomatik yeniden boyutlandırılır. Grafiğin taşmaması sağlandı.
     const resizeObserver = new ResizeObserver(entries => {
@@ -112,7 +211,7 @@ const TradingViewChart = ({ data, tip, saatGoster }) => {
         chart.applyOptions({ width: newRect.width, height: newRect.height });
       }
     });
-    
+
     resizeObserver.observe(chartContainerRef.current);
 
     return () => {
@@ -120,29 +219,14 @@ const TradingViewChart = ({ data, tip, saatGoster }) => {
       chart.remove();
       chartRef.current = null;
       seriRef.current = null;
+      ekSeriRef.current = {};
     };
-  }, [tip, saatGoster]);
+  }, [tip, saatGoster, gostergeAnahtari]);
 
   //Veri değişince mevcut grafiğin verisi güncellenir.
   useEffect(() => {
-    // Veri yoksa veya array boş ise grafiğin çökmemesi için
-    if (!seriRef.current || !Array.isArray(data) || data.length === 0) return;
-
-    // API'den gelen verileri zorla sayıya çevirir. String veri gelme ihtimaline karşı alınan önlem.
-    //Bozuk verileri filtreleyip eskiden yeniye sıralıyoruz.
-    const temizVeri = data
-      .map(d => ({
-        time: d.time,
-        open: Number(d.open),
-        high: Number(d.high),
-        low: Number(d.low),
-        close: Number(d.close)
-      }))
-      .filter(d => !isNaN(d.open) && !isNaN(d.high) && !isNaN(d.low) && !isNaN(d.close))
-      .filter((v, i, a) => a.findIndex(t => t.time === v.time) === i)
-      .sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime());
-
-    if (temizVeri.length === 0) return;
+    if (!seriRef.current || !hazir) return;
+    const { temizVeri } = hazir;
 
     try {
       if (tip === 'cizgi') {
@@ -154,6 +238,25 @@ const TradingViewChart = ({ data, tip, saatGoster }) => {
       } else {
         seriRef.current.setData(temizVeri);
       }
+
+      // Gösterge verileri. Hesaplanamayan başlangıç noktaları boş bırakılır.
+      const zamanlar = temizVeri.map(d => d.time);
+      const yaz = (seri, degerler) => seri?.setData(degerler.map((v, i) => (v === null ? { time: zamanlar[i] } : { time: zamanlar[i], value: v })));
+      const ek = ekSeriRef.current;
+      ek.hacim?.setData(temizVeri.map(d => ({ time: d.time, value: d.volume, color: d.close >= d.open ? 'rgba(0, 255, 94, 0.35)' : 'rgba(255, 31, 31, 0.35)' })));
+      yaz(ek.sma20, hazir.sma20);
+      yaz(ek.sma50, hazir.sma50);
+      yaz(ek.ema20, hazir.ema20);
+      yaz(ek.bbUst, hazir.bollinger.ust);
+      yaz(ek.bbOrta, hazir.bollinger.orta);
+      yaz(ek.bbAlt, hazir.bollinger.alt);
+      yaz(ek.rsi, hazir.rsi);
+      ek.macdHistogram?.setData(hazir.macd.histogram.map((v, i) => (v === null
+        ? { time: zamanlar[i] }
+        : { time: zamanlar[i], value: v, color: v >= 0 ? 'rgba(0, 255, 94, 0.5)' : 'rgba(255, 31, 31, 0.5)' })));
+      yaz(ek.macd, hazir.macd.macd);
+      yaz(ek.sinyal, hazir.macd.sinyal);
+
       //Her güncellemede değil, grafiğin başlangıcı değişince sığdırılır. Kullanıcının yakınlaştırması bozulmaz.
       if (ilkZamanRef.current !== temizVeri[0].time) {
         chartRef.current.timeScale().fitContent();
@@ -162,9 +265,39 @@ const TradingViewChart = ({ data, tip, saatGoster }) => {
     } catch (e) {
       console.error("TradingView Çizim Hatası:", e);
     }
-  }, [data, tip, saatGoster]);
+  }, [hazir, tip, saatGoster, gostergeAnahtari]);
 
-  return <div ref={chartContainerRef} className="w-full h-full" />;
+  // Açılış, yüksek, düşük, kapanış, değişim, hacim ve açık göstergelerin değerleri.
+  const sira = hazir ? (imlec !== null && imlec >= 0 && imlec < hazir.temizVeri.length ? imlec : hazir.temizVeri.length - 1) : null;
+  const mum = sira !== null ? hazir.temizVeri[sira] : null;
+  const oncekiKapanis = sira > 0 ? hazir.temizVeri[sira - 1].close : null;
+  const acikGostergeler = new Set(gostergeler);
+  const gostergeDegeri = (kod, ad, deger, ondalik = 2) => (acikGostergeler.has(kod) && deger != null
+    ? <span key={ad} style={{ color: GOSTERGE_RENKLERI[ad === 'Sinyal' ? 'sinyal' : kod] }}>{ad} {deger.toLocaleString('tr-TR', { maximumFractionDigits: ondalik, minimumFractionDigits: ondalik })}</span>
+    : null);
+
+  return (
+    <div className="relative w-full h-full">
+      {mum && (
+        <div className="absolute left-2 top-1 right-20 z-10 pointer-events-none flex flex-wrap gap-x-3 text-xs text-slate-400">
+          <span>A <b className="text-white">{fiyatYaz(mum.open)}</b></span>
+          <span>Y <b className="text-white">{fiyatYaz(mum.high)}</b></span>
+          <span>D <b className="text-white">{fiyatYaz(mum.low)}</b></span>
+          <span>K <b className="text-white">{fiyatYaz(mum.close)}</b></span>
+          {oncekiKapanis > 0 && <b className={karRengi(mum.close - oncekiKapanis)}>{isaretliYuzde(((mum.close - oncekiKapanis) / oncekiKapanis) * 100)}</b>}
+          {mum.volume > 0 && <span>Hacim <b className="text-white">{kisaSayi.format(mum.volume)}</b></span>}
+          {gostergeDegeri('sma20', 'SMA20', hazir.sma20[sira])}
+          {gostergeDegeri('sma50', 'SMA50', hazir.sma50[sira])}
+          {gostergeDegeri('ema20', 'EMA20', hazir.ema20[sira])}
+          {gostergeDegeri('bollinger', 'BB', hazir.bollinger.orta[sira])}
+          {gostergeDegeri('rsi', 'RSI', hazir.rsi[sira], 1)}
+          {gostergeDegeri('macd', 'MACD', hazir.macd.macd[sira])}
+          {gostergeDegeri('macd', 'Sinyal', hazir.macd.sinyal[sira])}
+        </div>
+      )}
+      <div ref={chartContainerRef} className="w-full h-full" />
+    </div>
+  );
 };
 
 function App() {
@@ -183,6 +316,29 @@ function App() {
   const [grafikSonucu, setGrafikSonucu] = useState({ sembol: null, donem: null, veri: [] });
   const [grafikTipi, setGrafikTipi] = useState('mum');
   const [grafikDonemi, setGrafikDonemi] = useState('3a');
+  // Hisse grafiğinde açık göstergeler ve tarayıcıda saklanan favori hisseler.
+  const [grafikGostergeleri, setGrafikGostergeleri] = useState(['sma20', 'hacim']);
+  // Hisse grafiği tam ekran açılabilir. Tarayıcı izin verirse pencere de tam ekrana geçer, vermezse grafik sayfayı kaplar.
+  const [grafikTamEkran, setGrafikTamEkran] = useState(false);
+  const tamEkranDegistir = () => {
+    if (grafikTamEkran) {
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      setGrafikTamEkran(false);
+    } else {
+      setGrafikTamEkran(true);
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    }
+  };
+  const gostergeDegistir = (kod) => setGrafikGostergeleri(onceki => (onceki.includes(kod) ? onceki.filter(k => k !== kod) : [...onceki, kod]));
+  const [favoriler, setFavoriler] = useState(() => {
+    try {
+      const kayit = JSON.parse(localStorage.getItem('bist_favoriler'));
+      return Array.isArray(kayit) ? kayit.filter(s => typeof s === 'string') : [];
+    } catch {
+      return [];
+    }
+  });
+  const favoriDegistir = (sembol) => setFavoriler(onceki => (onceki.includes(sembol) ? onceki.filter(s => s !== sembol) : [...onceki, sembol]));
   // Portföy grafiğinin dönemi ve verisi, hisse grafiğinden ayrı tutulmalı.
   const [portfoyDonemi, setPortfoyDonemi] = useState('3a');
   // Tüm geçmiş tek seferde geldiği için dönem sonuçta tutulmaz, seri ekranda kesilir.
@@ -226,6 +382,23 @@ function App() {
   useEffect(() => {
     localStorage.setItem('bist_nakit_hareketleri', JSON.stringify(nakitHareketleri));
   }, [nakitHareketleri]);
+
+  useEffect(() => {
+    localStorage.setItem('bist_favoriler', JSON.stringify(favoriler));
+  }, [favoriler]);
+
+  // Esc ile ya da tarayıcının tam ekranından çıkınca grafik de normale döner.
+  useEffect(() => {
+    if (!grafikTamEkran) return;
+    const tusla = (olay) => { if (olay.key === 'Escape') setGrafikTamEkran(false); };
+    const pencereCikti = () => { if (!document.fullscreenElement) setGrafikTamEkran(false); };
+    window.addEventListener('keydown', tusla);
+    document.addEventListener('fullscreenchange', pencereCikti);
+    return () => {
+      window.removeEventListener('keydown', tusla);
+      document.removeEventListener('fullscreenchange', pencereCikti);
+    };
+  }, [grafikTamEkran]);
 
   // 2. Portföy state'i her değiştiğinde hafıza otomatik güncellenir.
   useEffect(() => {
@@ -357,11 +530,6 @@ function App() {
     }
   }, [aktifSekme, islemGecmisi]);
 
-  const filtrelenmisHisseler = hisseler.filter(hisse =>
-    hisse.sembol.toLowerCase().includes(aramaMetni.toLowerCase()) || 
-    hisse.ad.toLowerCase().includes(aramaMetni.toLowerCase())
-  );
-
   // Seçilen hissenin fiyatının güncel piyasadan okunması için yeni bir değişken. Öncesinde modal açıkken değer güncellenmiyordu. 
   const seciliFiyat = hisseler.find(h => h.sembol === seciliHisse?.sembol)?.fiyat ?? seciliHisse?.fiyat;
 
@@ -375,6 +543,15 @@ function App() {
     setSeciliHisse(hisse);
     setLotMiktari('');
   };
+
+  // Dar ekranda liste grafiğin altında kaldığı için seçimden sonra sayfa başa kayar.
+  const listedenSec = (hisse) => {
+    hisseSec(hisse);
+    if (window.innerWidth < 1280) window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const seciliGuncel = hisseler.find(h => h.sembol === seciliHisse?.sembol) ?? seciliHisse;
+  const enCokYukselenler = [...hisseler].filter(h => h.degisim > 0).sort((a, b) => b.degisim - a.degisim).slice(0, 5);
+  const enCokDusenler = [...hisseler].filter(h => h.degisim < 0).sort((a, b) => a.degisim - b.degisim).slice(0, 5);
 
   const eldekiLot = portfoy.find(p => p.sembol === seciliHisse?.sembol)?.lot ?? 0;
   const seciliDegisim = hisseler.find(h => h.sembol === seciliHisse?.sembol)?.degisim ?? seciliHisse?.degisim ?? 0;
@@ -530,86 +707,42 @@ function App() {
           )}
         </div>
       </nav>
+      <GostergeSeridi />
 
       {/* key sayesinde her sekme değişiminde perde yeniden açılır. Tıklamaları engellemez. */}
       <div key={aktifSekme} className="perde-gecisi fixed inset-0 z-10 bg-black pointer-events-none" aria-hidden="true" />
-      <main className="p-4 sm:p-7 max-w-[1400px] mx-auto space-y-5">
-        {/* Solda hisse listesi, sağda grafik ve al/sat paneli. Açılır pencerenin yerini aldı. */}
+      <main className={`p-4 sm:p-7 mx-auto space-y-5 ${aktifSekme === 'piyasa' ? 'max-w-[1800px]' : 'max-w-[1400px]'}`}>
+        {/* Solda hisse listesi, ortada göstergeli grafik, sağda al/sat ve piyasa özeti. Geniş ekranda sayfa kaydırmadan sığar. */}
         {aktifSekme === 'piyasa' && (
-          <div className="grid gap-5 items-start lg:grid-cols-[minmax(0,1.1fr)_minmax(380px,1fr)]">
-            <section className="min-w-0 bg-black rounded-xl border border-white">
-              <div className="p-5 flex flex-wrap gap-3 justify-between items-center">
-                <h3 className="font-medium">BIST Hisseleri ({hisseler.length})</h3>
-                <input
-                  type="text"
-                  placeholder="Hisse Ara..."
-                  value={aramaMetni}
-                  onChange={(e) => setAramaMetni(e.target.value)}
-                  className="bg-black border border-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-emerald-500 w-52"
-                />
-              </div>
-
-              {piyasaHatasi && hisseler.length > 0 && (
-                <div className="mx-5 mb-4 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm text-amber-300">
-                  Veriler güncellenemedi, son alınan fiyatlar gösteriliyor.
-                </div>
-              )}
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-white text-slate-400 text-sm">
-                      <th className="py-3 pl-5 font-medium">Sembol</th>
-                      <th className="py-3 text-right font-medium">Fiyat (₺)</th>
-                      <th className="py-3 pr-5 text-right font-medium">Değişim</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtrelenmisHisseler.map((hisse) => (
-                      <tr
-                        key={hisse.id}
-                        onClick={() => hisseSec(hisse)}
-                        className={`border-b border-white/20 cursor-pointer transition ${seciliHisse?.sembol === hisse.sembol ? 'bg-slate-700/40' : 'hover:bg-slate-700/30'}`}
-                      >
-                        <td className="py-3 pl-5 font-bold text-emerald-400">
-                          <button aria-pressed={seciliHisse?.sembol === hisse.sembol}>{hisse.sembol}</button>
-                        </td>
-                        <td className="py-3 text-right font-medium">{hisse.fiyat.toLocaleString('tr-TR', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                        {seciliHisse?.sembol === hisse.sembol ? (
-                          <td className={`py-3 pr-5 text-right font-medium ${degisimRengi(seciliDonemDegisimi)}`}>
-                            <span className="mr-2 text-xs font-normal text-slate-400">{seciliDonemAdi}</span>
-                            {degisimYaz(seciliDonemDegisimi)}
-                          </td>
-                        ) : (
-                          <td className={`py-3 pr-5 text-right font-medium ${karRengi(hisse.degisim)}`}>{isaretliYuzde(hisse.degisim)}</td>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {filtrelenmisHisseler.length === 0 && (
-                  <div className="text-center py-8 text-slate-500">
-                    {hisseler.length > 0
-                      ? 'Aramanızla eşleşen hisse bulunamadı.'
-                      : piyasaHatasi
-                        ? 'Piyasa verileri alınamadı. Yeniden deneniyor...'
-                        : 'Piyasa Verileri Yükleniyor...'}
-                  </div>
-                )}
-              </div>
+          <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)_330px] xl:h-[calc(100vh-11rem)] xl:min-h-[640px]">
+            <section className="order-3 xl:order-none min-w-0 bg-black rounded-xl border border-white flex flex-col h-[70vh] xl:h-auto xl:min-h-0 overflow-hidden">
+              <HisseListesi
+                hisseler={hisseler}
+                aramaMetni={aramaMetni}
+                setAramaMetni={setAramaMetni}
+                seciliSembol={seciliHisse?.sembol}
+                hisseSec={listedenSec}
+                favoriler={favoriler}
+                favoriDegistir={favoriDegistir}
+                seciliDegisim={{ deger: seciliDonemDegisimi, ad: seciliDonemAdi }}
+                piyasaHatasi={piyasaHatasi}
+              />
             </section>
 
-            {seciliHisse && (
-              // Panel ekran yüksekliğine sığar, grafik kalan alanı doldurur. Emir düğmesine ulaşmak için kaydırma gerekmez.
-              <section className="order-first lg:order-none min-w-0 bg-black rounded-xl border border-white lg:sticky lg:top-20 lg:flex lg:flex-col lg:h-[calc(100vh-6rem)] lg:max-h-[52rem] lg:overflow-y-auto">
-                <div className="p-4 pb-2 shrink-0">
-                  <div className="flex flex-wrap justify-between items-start gap-2 mb-2">
-                    <div>
-                      <h3 className="text-xl font-bold text-white">{seciliHisse.sembol}</h3>
-                      {/* Panelde fiyat güncel kalır. */}
-                      <p className={`text-sm font-medium ${degisimRengi(seciliDonemDegisimi)}`}>{tl(seciliFiyat)} · {seciliDonemAdi} {degisimYaz(seciliDonemDegisimi)}</p>
+            <section className={`min-w-0 bg-black border border-white flex flex-col overflow-hidden ${grafikTamEkran ? 'fixed inset-0 z-50 rounded-none' : 'order-1 xl:order-none rounded-xl h-[560px] xl:h-auto xl:min-h-0'}`}>
+              {seciliHisse ? (
+                <>
+                  <div className="px-5 py-3 border-b border-white/20 flex flex-wrap items-center gap-x-6 gap-y-2 shrink-0">
+                    <div className="min-w-0">
+                      <h3 className="text-2xl font-bold text-white">{seciliHisse.sembol}</h3>
+                      <p className="text-xs text-slate-400 truncate">{[seciliGuncel.ad !== seciliGuncel.sembol && seciliGuncel.ad, seciliGuncel.sektor].filter(Boolean).join(' · ')}</p>
                     </div>
-                    <div className="flex gap-1">
+                    <div className="flex items-baseline gap-3">
+                      {/* Panelde fiyat güncel kalır. */}
+                      <span className="text-3xl font-bold tabular-nums">{fiyatYaz(seciliFiyat)}</span>
+                      <span className={`text-sm font-semibold ${degisimRengi(seciliDonemDegisimi)}`}>{seciliDonemAdi} {degisimYaz(seciliDonemDegisimi)}</span>
+                    </div>
+                    <div className="ml-auto flex gap-1">
                       <button
                         onClick={() => setGrafikTipi('mum')}
                         className={`px-2 py-1 rounded text-xs font-medium transition ${grafikTipi === 'mum' ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
@@ -622,9 +755,17 @@ function App() {
                       >
                         Çizgi
                       </button>
+                      <button
+                        onClick={tamEkranDegistir}
+                        aria-label={grafikTamEkran ? 'Tam ekrandan çık' : 'Grafiği tam ekran aç'}
+                        title={grafikTamEkran ? 'Tam ekrandan çık (Esc)' : 'Tam ekran'}
+                        className="ml-1 px-2 py-1 rounded text-xs font-medium transition bg-slate-700 text-slate-300 hover:bg-slate-600"
+                      >
+                        {grafikTamEkran ? '✕ Küçült' : '⛶ Tam Ekran'}
+                      </button>
                     </div>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="px-5 pt-3 pb-1 flex flex-wrap items-center gap-1.5 shrink-0">
                     {GRAFIK_DONEMLERI.map((secenek) => (
                       <button
                         key={secenek.kod}
@@ -634,31 +775,50 @@ function App() {
                         {secenek.ad}
                       </button>
                     ))}
+                    <span className="mx-2 h-5 w-px bg-white/20" />
+                    {GRAFIK_GOSTERGELERI.map((g) => (
+                      <button
+                        key={g.kod}
+                        onClick={() => gostergeDegistir(g.kod)}
+                        aria-pressed={grafikGostergeleri.includes(g.kod)}
+                        className={`px-2 py-1 rounded text-xs font-medium transition ${grafikGostergeleri.includes(g.kod) ? 'text-amber-400 ring-1 ring-amber-400' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
+                      >
+                        {g.ad}
+                      </button>
+                    ))}
                   </div>
-                </div>
 
-                <div className="h-64 lg:h-auto lg:flex-1 lg:min-h-36 w-full px-2 overflow-hidden relative">
-                    {/* Grafik için yükleniyor ve veri yok durumları ayrıldı. */}
-                    {grafikSonucu.sembol !== seciliHisse.sembol || grafikSonucu.donem !== grafikDonemi ? (
-                        <div className="icerik-gecisi w-full h-full flex items-center justify-center text-slate-500 text-sm">
-                            Grafik Yükleniyor...
-                        </div>
-                    ) : grafikSonucu.veri.length > 0 ? (
-                        <div className="icerik-gecisi w-full h-full">
-                          <TradingViewChart
-                            data={grafikSonucu.veri}
-                            tip={grafikTipi}
-                            saatGoster={GRAFIK_DONEMLERI.find(d => d.kod === grafikDonemi).gunIci}
-                          />
-                        </div>
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
-                            Grafik verisi alınamadı.
-                        </div>
-                    )}
-                </div>
+                  <div className="flex-1 min-h-0 w-full px-2 pb-2 overflow-hidden relative">
+                      {/* Grafik için yükleniyor ve veri yok durumları ayrıldı. */}
+                      {grafikSonucu.sembol !== seciliHisse.sembol || grafikSonucu.donem !== grafikDonemi ? (
+                          <div className="icerik-gecisi w-full h-full flex items-center justify-center text-slate-500 text-sm">
+                              Grafik Yükleniyor...
+                          </div>
+                      ) : grafikSonucu.veri.length > 0 ? (
+                          <div className="icerik-gecisi w-full h-full">
+                            <TradingViewChart
+                              data={grafikSonucu.veri}
+                              tip={grafikTipi}
+                              saatGoster={GRAFIK_DONEMLERI.find(d => d.kod === grafikDonemi).gunIci}
+                              gostergeler={grafikGostergeleri}
+                            />
+                          </div>
+                      ) : (
+                          <div className="w-full h-full flex items-center justify-center text-slate-500 text-sm">
+                              Grafik verisi alınamadı.
+                          </div>
+                      )}
+                  </div>
+                </>
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">Piyasa Verileri Yükleniyor...</div>
+              )}
+            </section>
 
-                <div className="p-4 border-t border-white/20 space-y-2.5 shrink-0">
+            <div className="order-2 xl:order-none min-w-0 bg-black rounded-xl border border-white xl:min-h-0 xl:overflow-y-auto">
+              {seciliHisse && (
+                <div className="p-4 border-b border-white/20 space-y-2.5">
+                  <h3 className="text-[11px] font-semibold tracking-widest text-slate-400">AL / SAT</h3>
                   <div className="flex gap-2">
                     <button
                       className={`flex-1 py-2 rounded-lg font-medium transition ${islemTipi === 'AL' ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}
@@ -713,8 +873,16 @@ function App() {
                     {islemTipi === 'AL' ? 'ALIŞ EMRİ GÖNDER' : 'SATIŞ EMRİ GÖNDER'}
                   </button>
                 </div>
-              </section>
-            )}
+              )}
+              {seciliGuncel && <HisseOzeti hisse={seciliGuncel} fiyat={seciliFiyat} />}
+              {hisseler.length > 0 && (
+                <>
+                  <PiyasaGenisligi hisseler={hisseler} />
+                  <EnCokDegisenler baslik="EN ÇOK YÜKSELENLER" hisseler={enCokYukselenler} hisseSec={listedenSec} />
+                  <EnCokDegisenler baslik="EN ÇOK DÜŞENLER" hisseler={enCokDusenler} hisseSec={listedenSec} />
+                </>
+              )}
+            </div>
           </div>
         )}
 

@@ -607,3 +607,41 @@ def elde_kalan_seriyi_ekle(sonuc: dict[str, Any], kalan_seri: list[dict[str, Any
         nokta["held_pnl"] = kalan_nokta["unrealized_pnl"] if kalan_nokta else 0.0
         nokta["held_return_pct"] = kalan_nokta["unrealized_return_pct"] if kalan_nokta else 0.0
     return sonuc
+
+
+# Piyasa sayfası için tek hissenin fiyat tablosu ve günün özeti.
+def hisse_tablosu(veri: pd.DataFrame, ticker: str) -> pd.DataFrame:
+    """yfinance toplu indirmesinden tek hissenin Open/High/Low/Close/Volume tablosunu çıkarır."""
+    if veri.empty:
+        return pd.DataFrame()
+    if isinstance(veri.columns, pd.MultiIndex):
+        if ticker not in veri.columns.get_level_values(1):
+            return pd.DataFrame()
+        veri = veri.xs(ticker, axis=1, level=1)
+    veri = veri.copy()
+    index = pd.DatetimeIndex(veri.index)
+    veri.index = index.tz_convert("Europe/Istanbul").tz_localize(None) if index.tz is not None else index
+    return veri.dropna(how="all")
+
+
+def gun_ozeti(saatlik: pd.DataFrame, gunluk: pd.DataFrame, gun: pd.Timestamp) -> dict[str, float | None]:
+    """Seçilen günün açılış, en yüksek, en düşük ve hacmini döner.
+
+    Günlük satır varsa o kullanılır, Yahoo o günü atladıysa saatlik mumlardan hesaplanır.
+    """
+    gun = gun.normalize()
+    if not gunluk.empty:
+        satirlar = gunluk[gunluk.index.normalize() == gun].dropna(subset=["Open", "High", "Low"])
+        if len(satirlar):
+            satir = satirlar.iloc[-1]
+            return {"acilis": float(satir["Open"]), "yuksek": float(satir["High"]), "dusuk": float(satir["Low"]), "hacim": float(satir["Volume"])}
+    if not saatlik.empty:
+        mumlar = saatlik[saatlik.index.normalize() == gun].dropna(subset=["Open", "High", "Low"])
+        if len(mumlar):
+            return {
+                "acilis": float(mumlar["Open"].iloc[0]),
+                "yuksek": float(mumlar["High"].max()),
+                "dusuk": float(mumlar["Low"].min()),
+                "hacim": float(mumlar["Volume"].sum()),
+            }
+    return {"acilis": None, "yuksek": None, "dusuk": None, "hacim": None}
