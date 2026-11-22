@@ -61,8 +61,8 @@ const HisseListesi = ({ hisseler, aramaMetni, setAramaMetni, seciliSembol, hisse
           Veriler güncellenemedi, son alınan fiyatlar gösteriliyor.
         </div>
       )}
-      <div className="grid grid-cols-[18px_minmax(0,1fr)_64px_64px_74px] gap-2 px-3 pb-2 text-[11px] text-slate-400 border-b border-white shrink-0">
-        <span /><span>SEMBOL</span><span /><span className="text-right">SON</span><span className="text-center">DEĞ. %</span>
+      <div className="grid grid-cols-[18px_minmax(0,1fr)_64px_74px] @[340px]:grid-cols-[18px_minmax(0,1fr)_64px_64px_74px] gap-2 px-3 pb-2 text-[11px] text-slate-400 border-b border-white shrink-0">
+        <span /><span>SEMBOL</span><span className="hidden @[340px]:block" /><span className="text-right">SON</span><span className="text-center">DEĞ. %</span>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto">
@@ -77,7 +77,7 @@ const HisseListesi = ({ hisseler, aramaMetni, setAramaMetni, seciliSembol, hisse
             <div
               key={hisse.id}
               onClick={() => hisseSec(hisse)}
-              className={`grid grid-cols-[18px_minmax(0,1fr)_64px_64px_74px] gap-2 items-center px-3 py-2 border-b border-white/20 cursor-pointer transition ${secili ? 'bg-slate-700/40 shadow-[inset_3px_0_0_#34d399]' : 'hover:bg-slate-700/30'}`}
+              className={`grid grid-cols-[18px_minmax(0,1fr)_64px_74px] @[340px]:grid-cols-[18px_minmax(0,1fr)_64px_64px_74px] gap-2 items-center px-3 py-2 border-b border-white/20 cursor-pointer transition ${secili ? 'bg-slate-700/40 shadow-[inset_3px_0_0_#34d399]' : 'hover:bg-slate-700/30'}`}
             >
               <button
                 onClick={(e) => { e.stopPropagation(); favoriDegistir(hisse.sembol); }}
@@ -90,7 +90,8 @@ const HisseListesi = ({ hisseler, aramaMetni, setAramaMetni, seciliSembol, hisse
                 <button className="block font-bold text-emerald-400 text-sm" aria-pressed={secili}>{hisse.sembol}</button>
                 <p className="text-[11px] text-slate-400 truncate">{hisse.ad}</p>
               </div>
-              <MiniGrafik degerler={hisse.gecmis} yukseliste={hisse.degisim >= 0} />
+              {/* Liste 340 pikselden darsa mini grafik sembolün üstüne binmesin diye gizlenir. */}
+              <span className="hidden @[340px]:block"><MiniGrafik degerler={hisse.gecmis} yukseliste={hisse.degisim >= 0} /></span>
               <span className="text-right font-semibold text-sm tabular-nums">{hisse.fiyat.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               <span className={`text-center rounded-md py-1 text-xs font-semibold tabular-nums ${degisimKutusu(degisim)}`}>
                 {donemGoster && <span className="mr-1 font-normal text-slate-400">{seciliDegisim.ad}</span>}

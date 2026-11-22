@@ -714,8 +714,9 @@ function App() {
       <main className={`p-4 sm:p-7 mx-auto space-y-5 ${aktifSekme === 'piyasa' ? 'max-w-[1800px]' : 'max-w-[1400px]'}`}>
         {/* Solda hisse listesi, ortada göstergeli grafik, sağda al/sat ve piyasa özeti. Geniş ekranda sayfa kaydırmadan sığar. */}
         {aktifSekme === 'piyasa' && (
-          <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)_330px] xl:h-[calc(100vh-11rem)] xl:min-h-[640px]">
-            <section className="order-3 xl:order-none min-w-0 bg-black rounded-xl border border-white flex flex-col h-[70vh] xl:h-auto xl:min-h-0 overflow-hidden">
+          // Orta genişlikte liste solda sabit durur, grafik ve al/sat sağda alt alta. Telefonda liste grafiğin hemen altına gelir.
+          <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[360px_minmax(0,1fr)_330px] xl:h-[calc(100vh-11rem)] xl:min-h-[640px]">
+            <section className="@container order-2 lg:order-none lg:row-span-2 xl:row-span-1 min-w-0 bg-black rounded-xl border border-white flex flex-col h-[60vh] lg:h-[calc(100vh-6rem)] lg:sticky lg:top-20 lg:self-start xl:static xl:h-auto xl:self-auto xl:min-h-0 overflow-hidden">
               <HisseListesi
                 hisseler={hisseler}
                 aramaMetni={aramaMetni}
@@ -729,7 +730,7 @@ function App() {
               />
             </section>
 
-            <section className={`min-w-0 bg-black border border-white flex flex-col overflow-hidden ${grafikTamEkran ? 'fixed inset-0 z-50 rounded-none' : 'order-1 xl:order-none rounded-xl h-[560px] xl:h-auto xl:min-h-0'}`}>
+            <section className={`min-w-0 bg-black border border-white flex flex-col overflow-hidden ${grafikTamEkran ? 'fixed inset-0 z-50 rounded-none' : 'order-1 lg:order-none rounded-xl h-[560px] xl:h-auto xl:min-h-0'}`}>
               {seciliHisse ? (
                 <>
                   <div className="px-5 py-3 border-b border-white/20 flex flex-wrap items-center gap-x-6 gap-y-2 shrink-0">
@@ -815,7 +816,7 @@ function App() {
               )}
             </section>
 
-            <div className="order-2 xl:order-none min-w-0 bg-black rounded-xl border border-white xl:min-h-0 xl:overflow-y-auto">
+            <div className="order-3 lg:order-none min-w-0 bg-black rounded-xl border border-white xl:min-h-0 xl:overflow-y-auto">
               {seciliHisse && (
                 <div className="p-4 border-b border-white/20 space-y-2.5">
                   <h3 className="text-[11px] font-semibold tracking-widest text-slate-400">AL / SAT</h3>
