@@ -3,6 +3,9 @@ import {
   alimUygula,
   analiziCanlandir,
   analizIslemleri,
+  // Bölünme düzeltmesi testleri için.
+  bolunmeleriUygula,
+  bolunmeOrani,
   seriyiDonemeGoreKes,
   donemDegisimi,
   donemKari,
@@ -581,5 +584,82 @@ describe('donemBasinaKadarDoldur', () => {
   it('boş seride ve bilinmeyen dönemde çökmez', () => {
     expect(donemBasinaKadarDoldur([], '5y')).toEqual([]);
     expect(donemBasinaKadarDoldur([nokta('2026-01-10')], '1g')).toHaveLength(1);
+  });
+});
+
+// Bölünme ve bedelsiz sermaye artırımı düzeltmesi.
+describe('bolunmeleriUygula', () => {
+  const ONCE = Date.UTC(2026, 4, 13, 8);
+  const SONRA = Date.UTC(2026, 4, 15, 8);
+  const kayit = (id, tip, lot, fiyat, ek = {}) => ({ id, tarih: '-', tip, sembol: 'BIMAS', lot, fiyat, tutar: lot * fiyat, ...ek });
+  const bolunme = (oran, kapanis = 414) => ({ BIMAS: [{ tarih: '2026-05-14', oran, kapanis }] });
+  const durum = (portfoy, islemler) => ({ portfoy, islemler, nakit: [], uygulananlar: [] });
+
+  it('bölünmeden önceki işlemin lotunu çarpar, fiyatını böler, portföyü düzeltir', () => {
+    const sonuc = bolunmeleriUygula(
+      durum([{ sembol: 'BIMAS', lot: 10, maliyet: 700, fiyat: 700 }], [kayit(ONCE, 'AL', 10, 700)]),
+      bolunme(2),
+    );
+    expect(sonuc.islemler).toEqual([{ ...kayit(ONCE, 'AL', 20, 350), tutar: 7000, bolunme: 2 }]);
+    expect(sonuc.portfoy).toEqual([{ sembol: 'BIMAS', lot: 20, maliyet: 350, fiyat: 414 }]);
+    expect(sonuc.nakit).toEqual([]);
+    expect(sonuc.uygulananlar).toEqual(['BIMAS:2026-05-14']);
+    expect(sonuc.islenenler).toEqual([{ sembol: 'BIMAS', tarih: '2026-05-14', oran: 2, kusurat: 0 }]);
+  });
+
+  it('küsurat lotu o günün kapanışından satar ve nakde ekler', () => {
+    const sonuc = bolunmeleriUygula(
+      durum([{ sembol: 'BIMAS', lot: 10, maliyet: 60, fiyat: 60 }], [kayit(ONCE, 'AL', 10, 60)]),
+      bolunme(4.25, 15.65),
+    );
+    expect(sonuc.portfoy[0].lot).toBe(42);
+    expect(sonuc.portfoy[0].maliyet).toBeCloseTo(600 / 42.5, 8);
+    const kusurat = sonuc.islemler.find(islem => islem.kusurat);
+    expect(kusurat).toMatchObject({ tip: 'SAT', lot: 0.5, fiyat: 15.65, id: Date.UTC(2026, 4, 14, 7) });
+    expect(kusurat.karZarar).toBeCloseTo((15.65 - 600 / 42.5) * 0.5, 8);
+    expect(sonuc.nakit).toHaveLength(1);
+    expect(sonuc.nakit[0]).toMatchObject({ tip: 'KÜSURAT', aciklama: 'BIMAS bölünme küsuratı' });
+    expect(sonuc.nakit[0].tutar).toBeCloseTo(7.83, 2);
+    expect(sonuc.islenenler[0].kusurat).toBe(0.5);
+  });
+
+  it('bölünmeden sonra eski fiyatla yapılan satışın kârını düzeltir, kalan bedelsiz lotlar portföye eklenir', () => {
+    const sonuc = bolunmeleriUygula(
+      durum([], [kayit(SONRA, 'SAT', 10, 414, { karZarar: -2860 }), kayit(ONCE, 'AL', 10, 700)]),
+      bolunme(2),
+    );
+    expect(sonuc.islemler.find(islem => islem.id === SONRA).karZarar).toBe(640);
+    expect(sonuc.portfoy).toEqual([{ sembol: 'BIMAS', lot: 10, maliyet: 350, fiyat: 414 }]);
+  });
+
+  it('aynı bölünmeyi ikinci kez uygulamaz', () => {
+    const ilk = bolunmeleriUygula(
+      durum([{ sembol: 'BIMAS', lot: 10, maliyet: 700, fiyat: 700 }], [kayit(ONCE, 'AL', 10, 700)]),
+      bolunme(2),
+    );
+    expect(bolunmeleriUygula({ ...ilk, nakit: ilk.nakit }, bolunme(2))).toBeNull();
+  });
+
+  it('bölünmeden önce işlem yoksa kayıtlara dokunmaz, yalnızca işlendi sayar', () => {
+    const portfoy = [{ sembol: 'BIMAS', lot: 10, maliyet: 400, fiyat: 400 }];
+    const islemler = [kayit(SONRA, 'AL', 10, 400)];
+    const sonuc = bolunmeleriUygula(durum(portfoy, islemler), bolunme(2));
+    expect(sonuc.portfoy).toBe(portfoy);
+    expect(sonuc.islemler).toEqual(islemler);
+    expect(sonuc.uygulananlar).toEqual(['BIMAS:2026-05-14']);
+    expect(sonuc.islenenler).toEqual([]);
+  });
+
+  it('portföy işlem kayıtlarıyla uyuşmuyorsa dokunmaz', () => {
+    const sonuc = bolunmeleriUygula(
+      durum([{ sembol: 'BIMAS', lot: 15, maliyet: 700, fiyat: 700 }], [kayit(ONCE, 'AL', 10, 700)]),
+      bolunme(2),
+    );
+    expect(sonuc).toBeNull();
+  });
+
+  it('Yahoonun tam sayıya çok yakın oranlarını yuvarlar', () => {
+    expect(bolunmeOrani(18.999012)).toBe(19);
+    expect(bolunmeOrani(4.25)).toBe(4.25);
   });
 });

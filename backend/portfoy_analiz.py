@@ -609,6 +609,32 @@ def elde_kalan_seriyi_ekle(sonuc: dict[str, Any], kalan_seri: list[dict[str, Any
     return sonuc
 
 
+# Bölünme ve bedelsiz sermaye artırımları.
+# Yahoo bu günlerden önceki fiyatları bölünmüş fiyata çevirir, bu yüzden portföydeki eski işlemler de aynı oranla düzeltilmelidir.
+def bolunmeleri_ayikla(veri: pd.DataFrame, semboller: list[str]) -> dict[str, list[dict[str, Any]]]:
+    """yfinance indirmesindeki Stock Splits kolonundan her hissenin bölünme tarihini, oranını ve o günkü kapanışını çıkarır."""
+    sonuc: dict[str, list[dict[str, Any]]] = {}
+    if veri.empty or "Stock Splits" not in veri.columns.get_level_values(0):
+        return sonuc
+    for sembol in semboller:
+        tablo = hisse_tablosu(veri, f"{sembol}.IS")
+        if tablo.empty or "Stock Splits" not in tablo:
+            continue
+        olaylar = []
+        for gun, oran in tablo["Stock Splits"].dropna().items():
+            if oran <= 0 or oran == 1:
+                continue
+            kapanis = tablo["Close"].get(gun) if "Close" in tablo else None
+            olaylar.append({
+                "tarih": gun.strftime("%Y-%m-%d"),
+                "oran": float(oran),
+                "kapanis": None if kapanis is None or pd.isna(kapanis) else round(float(kapanis), 2),
+            })
+        if olaylar:
+            sonuc[sembol] = olaylar
+    return sonuc
+
+
 # Piyasa sayfası için tek hissenin fiyat tablosu ve günün özeti.
 def hisse_tablosu(veri: pd.DataFrame, ticker: str) -> pd.DataFrame:
     """yfinance toplu indirmesinden tek hissenin Open/High/Low/Close/Volume tablosunu çıkarır."""

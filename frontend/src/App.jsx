@@ -16,6 +16,8 @@ import {
   donemBasinaKadarDoldur,
   // Endeksten çıkan portföy hisselerini bulmak için.
   endeksDisiSemboller,
+  // Bölünme ve bedelsiz sermaye artırımlarını işlemek için.
+  bolunmeleriUygula,
   // Seçili hissenin dönem değişimi.
   donemDegisimi,
   // Yeni sayfa düzeninin yardımcıları.
@@ -345,8 +347,7 @@ function App() {
   const favoriDegistir = (sembol) => setFavoriler(onceki => (onceki.includes(sembol) ? onceki.filter(s => s !== sembol) : [...onceki, sembol]));
   // Portföy grafiğinin dönemi ve verisi, hisse grafiğinden ayrı tutulmalı.
   const [portfoyDonemi, setPortfoyDonemi] = useState('3a');
-  // Tüm geçmiş tek seferde geldiği için dönem sonuçta tutulmaz, seri ekranda kesilir.
-  // 1G gün içi seri kullandığı için sonucun hangi seri türüne ait olduğu da tutulur.
+  // Sonuç ait olduğu hisselerle ve dönemle tutulur, dönem değişince eski seri gösterilmez.
   const [portfoyGrafikSonucu, setPortfoyGrafikSonucu] = useState({ semboller: null, anahtar: null, veri: null });
   // 5Y dışındaki dönemler gün içi sıklıkta ayrı ayrı çekilir, 5Y günlük geçmişten kesilir.
   const portfoyGunIci = portfoyDonemi !== '5y';
@@ -386,6 +387,20 @@ function App() {
   useEffect(() => {
     localStorage.setItem('bist_nakit_hareketleri', JSON.stringify(nakitHareketleri));
   }, [nakitHareketleri]);
+
+  // İşlenmiş bölünmeler saklanır, aynı bölünme ikinci kez uygulanmaz.
+  const [uygulananBolunmeler, setUygulananBolunmeler] = useState(() => {
+    try {
+      const kayit = JSON.parse(localStorage.getItem('bist_bolunmeler'));
+      return Array.isArray(kayit) ? kayit.filter(s => typeof s === 'string') : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('bist_bolunmeler', JSON.stringify(uygulananBolunmeler));
+  }, [uygulananBolunmeler]);
 
   useEffect(() => {
     localStorage.setItem('bist_favoriler', JSON.stringify(favoriler));
@@ -467,6 +482,40 @@ function App() {
       });
     return () => { iptal = true; };
   }, [endeksDisi, hisseler]);
+
+  // İşlem geçmişindeki hisselerin bölünmeleri sorulur, yeni bir bölünme varsa eski işlemler düzeltilir.
+  // Kayıtlar her değiştiğinde yeniden kontrol edilir; backend sonucu önbellekte tuttuğu için bu istek hafiftir.
+  const islemSembolleri = [...new Set(islemGecmisi.map(islem => islem.sembol))].sort().join(',');
+  useEffect(() => {
+    if (!islemSembolleri) return;
+    let iptal = false;
+    fetch(`http://127.0.0.1:8000/api/bolunmeler?semboller=${encodeURIComponent(islemSembolleri)}`)
+      .then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then(bolunmeler => {
+        if (iptal) return;
+        const sonuc = bolunmeleriUygula(
+          { portfoy, islemler: islemGecmisi, nakit: nakitHareketleri, uygulananlar: uygulananBolunmeler },
+          bolunmeler,
+        );
+        if (!sonuc) return;
+        setPortfoy(sonuc.portfoy);
+        setIslemGecmisi(sonuc.islemler);
+        setNakitHareketleri(sonuc.nakit);
+        setUygulananBolunmeler(sonuc.uygulananlar);
+        if (sonuc.islenenler.length > 0) {
+          alert(sonuc.islenenler.map(({ sembol, tarih, oran, kusurat }) =>
+            `${sembol}: ${tarih} tarihli bölünme işlendi, 1 lot ${oran.toLocaleString('tr-TR')} lot oldu.`
+            + (kusurat > 0 ? ` ${kusurat.toLocaleString('tr-TR', { maximumFractionDigits: 4 })} lot küsurat nakde çevrildi.` : '')).join('\n'));
+        }
+      })
+      .catch(error => {
+        if (!iptal) console.error('Bölünme verisi alınamadı:', error);
+      });
+    return () => { iptal = true; };
+  }, [islemSembolleri, portfoy, islemGecmisi, nakitHareketleri, uygulananBolunmeler]);
 
   // Fiyat ve satış için kullanılan liste. Piyasa listesi ve sekmeler yalnızca endeks hisselerini gösterir.
   // Artık portföyde olmayan ya da endekse geri dönen hisselerin eski kaydı kullanılmaz.
@@ -563,7 +612,7 @@ function App() {
     }
   }, [aktifSekme, islemGecmisi]);
 
-  // Seçilen hissenin fiyatının güncel piyasadan okunması için yeni bir değişken. Öncesinde modal açıkken değer güncellenmiyordu. 
+  // Seçilen hissenin fiyatı güncel piyasadan okunur, işlem panelindeki fiyat da güncel kalır.
   // Seçili hissenin fiyatı, günlük değişimi ve özeti endeks dışı hisseler için de ek listeden okunur.
   const seciliFiyat = tumHisseler.find(h => h.sembol === seciliHisse?.sembol)?.fiyat ?? seciliHisse?.fiyat;
 
@@ -1050,9 +1099,14 @@ function App() {
                             {islem.tip}
                           </span>
                         </td>
-                        <td className="py-4 font-bold text-white">{islem.sembol}</td>
+                        <td className="py-4 font-bold text-white">
+                          {islem.sembol}
+                          {/* Bölünmeyle düzeltilen ve bölünme küsuratı olarak satılan kayıtlar işaretlenir. */}
+                          {islem.bolunme > 1 && <span className="ml-2 text-xs font-normal text-amber-300">bölünme ×{islem.bolunme.toLocaleString('tr-TR')}</span>}
+                          {islem.kusurat && <span className="ml-2 text-xs font-normal text-amber-300">küsurat</span>}
+                        </td>
                         <td className="py-4 text-right text-sm">{islem.fiyat.toFixed(2)} ₺</td>
-                        <td className="py-4 text-right text-sm">{islem.lot}</td>
+                        <td className="py-4 text-right text-sm">{islem.lot.toLocaleString('tr-TR', { maximumFractionDigits: 4 })}</td>
                         <td className="py-4 text-right pr-2 font-medium">
                           {islem.tutar.toLocaleString('tr-TR', {minimumFractionDigits: 2})} ₺
                         </td>

@@ -263,3 +263,114 @@ export const donemBasinaKadarDoldur = (seri, donem) => {
   }
   return [...sifirlar, ...seri];
 };
+
+// Bölünme ve bedelsiz sermaye artırımı.
+// Yahoo bölünmeden önceki fiyatları oranla böler. Eski işlemler aynı oranla düzeltilmezse portföy sahte zarar gösterir.
+const LOT_HASSASIYETI = 1e-6;
+const lotYuvarla = (lot) => Math.round(lot * 1e6) / 1e6;
+
+// Yahoo bazı oranları 18.999012 gibi verir. Tam sayıya çok yakın oranlar tam sayı kabul edilir.
+export const bolunmeOrani = (oran) => (Math.abs(oran - Math.round(oran)) < 0.005 ? Math.round(oran) : oran);
+
+// Bölünme o günün seans açılışında (İstanbul 10:00) geçerli olur. Bu andan önceki işlemler eski fiyattandır.
+export const bolunmeZamani = (tarih) => {
+  const [yil, ay, gun] = tarih.split('-').map(Number);
+  return Date.UTC(yil, ay - 1, gun, 7);
+};
+
+// Bir hissenin işlemlerini sırayla oynatır; son lotu, ortalama maliyeti ve her satışın gerçekleşen kârını verir.
+const pozisyonuOynat = (islemler) => {
+  let lot = 0;
+  let maliyet = 0;
+  const karlar = new Map();
+  islemSirali(islemler).forEach(islem => {
+    if (islem.tip === 'SAT') {
+      const miktar = Math.min(islem.lot, lot);
+      karlar.set(islem.id, (islem.fiyat - maliyet) * miktar);
+      lot = lotYuvarla(lot - miktar);
+      if (lot <= LOT_HASSASIYETI) {
+        lot = 0;
+        maliyet = 0;
+      }
+    } else {
+      maliyet = (lot * maliyet + islem.lot * islem.fiyat) / (lot + islem.lot);
+      lot = lotYuvarla(lot + islem.lot);
+    }
+  });
+  return { lot, maliyet, karlar };
+};
+
+// Henüz işlenmemiş bölünmeleri portföye, işlem geçmişine ve nakde uygular. Değişiklik yoksa null döner.
+// Bölünmeden önceki işlemlerin lotu oranla çarpılır, fiyatı bölünür; tutarı değişmez.
+// Bölünme anında elde kalan küsurat lot o günün kapanışından satılmış sayılır, tutarı nakde geçer.
+// Portföydeki lot ve ortalama maliyet düzeltilmiş geçmişten yeniden hesaplanır.
+export const bolunmeleriUygula = ({ portfoy, islemler, nakit, uygulananlar }, bolunmeler) => {
+  let yeniPortfoy = portfoy;
+  let yeniIslemler = islemler;
+  let yeniNakit = nakit;
+  const yeniUygulananlar = [...uygulananlar];
+  const islenenler = [];
+  const kullanilanlar = new Set([...islemler, ...nakit].map(kayit => kayit.id));
+  const benzersizZaman = (zaman) => {
+    let deger = zaman;
+    while (kullanilanlar.has(deger)) deger += 1;
+    kullanilanlar.add(deger);
+    return new Date(deger);
+  };
+
+  Object.keys(bolunmeler ?? {}).sort().forEach(sembol => {
+    const olaylar = [...(bolunmeler[sembol] ?? [])].sort((a, b) => a.tarih.localeCompare(b.tarih));
+    olaylar.forEach(({ tarih, oran: hamOran, kapanis }) => {
+      const anahtar = `${sembol}:${tarih}`;
+      if (yeniUygulananlar.includes(anahtar) || !(hamOran > 0) || hamOran === 1) return;
+      const sinir = bolunmeZamani(tarih);
+      const hisseIslemleri = yeniIslemler.filter(islem => islem.sembol === sembol);
+      // Bölünmeden önce işlem yoksa düzeltilecek bir şey yoktur.
+      if (!hisseIslemleri.some(islem => islem.id < sinir)) {
+        yeniUygulananlar.push(anahtar);
+        return;
+      }
+      // Portföydeki lot işlem kayıtlarıyla uyuşmuyorsa geçmiş eksiktir. Yanlış düzeltme yapılmasın diye dokunulmaz.
+      const mevcut = yeniPortfoy.find(p => p.sembol === sembol);
+      if (Math.abs(pozisyonuOynat(hisseIslemleri).lot - (mevcut?.lot ?? 0)) > LOT_HASSASIYETI) return;
+
+      const oran = bolunmeOrani(hamOran);
+      const duzeltilmis = hisseIslemleri.map(islem => (islem.id < sinir
+        ? { ...islem, lot: lotYuvarla(islem.lot * oran), fiyat: islem.fiyat / oran, bolunme: (islem.bolunme ?? 1) * oran }
+        : islem));
+      const eldeki = pozisyonuOynat(duzeltilmis.filter(islem => islem.id < sinir));
+      const kusurat = lotYuvarla(eldeki.lot - Math.floor(eldeki.lot + LOT_HASSASIYETI));
+      const ekler = [];
+      if (kusurat > LOT_HASSASIYETI) {
+        const fiyat = kapanis > 0 ? kapanis : eldeki.maliyet;
+        const zaman = benzersizZaman(sinir);
+        ekler.push({ ...islemKaydi('SAT', sembol, kusurat, fiyat, zaman), kusurat: true });
+        yeniNakit = [nakitHareketi('KÜSURAT', kusurat * fiyat, `${sembol} bölünme küsuratı`, zaman), ...yeniNakit];
+      }
+
+      const tumu = [...duzeltilmis, ...ekler];
+      const { lot, maliyet, karlar } = pozisyonuOynat(tumu);
+      const sonHali = tumu.map(islem => (karlar.has(islem.id) ? { ...islem, karZarar: karlar.get(islem.id) } : islem));
+      yeniIslemler = [...yeniIslemler.filter(islem => islem.sembol !== sembol), ...sonHali];
+      const yedekFiyat = kapanis > 0 ? kapanis : maliyet;
+      if (lot <= LOT_HASSASIYETI) {
+        yeniPortfoy = yeniPortfoy.filter(p => p.sembol !== sembol);
+      } else if (mevcut) {
+        yeniPortfoy = yeniPortfoy.map(p => (p.sembol === sembol ? { ...p, lot, maliyet, fiyat: yedekFiyat } : p));
+      } else {
+        yeniPortfoy = [...yeniPortfoy, { sembol, lot, maliyet, fiyat: yedekFiyat }];
+      }
+      yeniUygulananlar.push(anahtar);
+      islenenler.push({ sembol, tarih, oran, kusurat });
+    });
+  });
+
+  if (yeniUygulananlar.length === uygulananlar.length) return null;
+  return {
+    portfoy: yeniPortfoy,
+    islemler: [...yeniIslemler].sort((a, b) => b.id - a.id),
+    nakit: [...yeniNakit].sort((a, b) => b.id - a.id),
+    uygulananlar: yeniUygulananlar,
+    islenenler,
+  };
+};

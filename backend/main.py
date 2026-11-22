@@ -9,6 +9,8 @@ from typing import Any
 import pandas as pd
 import sirket_bilgileri as sirket_listesi
 from portfoy_analiz import gun_ozeti, hisse_tablosu
+# Bölünme ve bedelsiz sermaye artırımları için eklendi.
+from portfoy_analiz import bolunmeleri_ayikla
 from portfoy_analiz import DONEM_SIKLIKLARI, FiyatVerisiHatasi, IslemHatasi, portfoy_analizi, portfoy_donem_kari, portfoy_gun_ici_analizi, kapanis_kolonu, seans_tablosu
 
 app = FastAPI()
@@ -125,12 +127,41 @@ def get_ek_hisseler(semboller: str = ""):
         kayit = ek_hisseler_cache.get(istenen)
         if kayit and time.monotonic() - kayit[0] < HISSELER_CACHE_SURESI:
             return kayit[1]
-        # Kimlikler piyasa listesindekilerle çakışmasın diye 1000'den başlar.
+        # Kimlikler piyasa listesindekilerle çakışmasın diye 1001'den başlar.
         veri = hisseleri_cek(list(istenen), ilk_id=1001)
         if veri:
             ek_hisseler_cache.clear()
             ek_hisseler_cache[istenen] = (time.monotonic(), veri)
         return veri
+
+# İşlem geçmişindeki hisselerin son 5 yıldaki bölünme ve bedelsiz sermaye artırımları.
+# Frontend eski işlemlerin lotunu ve fiyatını bu oranla düzeltir. Bölünmeler seyrek değiştiği için 6 saat önbellekte tutulur.
+BOLUNME_CACHE_SURESI = 6 * 60 * 60
+BOLUNME_HISSE_SINIRI = 100
+bolunme_cache: dict[tuple[str, ...], tuple[float, dict]] = {}
+bolunme_kilit = threading.Lock()
+
+
+@app.get("/api/bolunmeler")
+def get_bolunmeler(semboller: str = ""):
+    istenen = tuple(sirket_listesi.ek_sembolleri_ayikla(semboller, [], BOLUNME_HISSE_SINIRI))
+    if not istenen:
+        return {}
+    with bolunme_kilit:
+        kayit = bolunme_cache.get(istenen)
+        if kayit and time.monotonic() - kayit[0] < BOLUNME_CACHE_SURESI:
+            return kayit[1]
+        try:
+            veri = yf.download([f"{s}.IS" for s in istenen], period="5y", interval="1d", actions=True, auto_adjust=False, progress=False)
+            sonuc = bolunmeleri_ayikla(veri, list(istenen))
+        except Exception as e:
+            # Hata önbelleğe alınmaz, boş sonuç işlemleri değiştirmez ve sonraki istekte yeniden denenir.
+            print(f"HATA - bölünme verisi çekilemedi: {e}")
+            return {}
+        if not veri.empty:
+            bolunme_cache.clear()
+            bolunme_cache[istenen] = (time.monotonic(), sonuc)
+        return sonuc
 
 # Her dönem için yfinance'den istenecek aralık ve mum sıklığı.
 GRAFIK_DONEMLERI = {

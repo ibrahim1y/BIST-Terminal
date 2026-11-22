@@ -5,6 +5,8 @@ import unittest
 import pandas as pd
 
 from portfoy_analiz import IslemHatasi, gun_ozeti, donem_fiyat_tablosu, donem_kari_olustur, donem_pozisyonlari, elde_kalan_islemler, elde_kalan_seriyi_ekle, gun_ici_seri_olustur, gunluk_seri_olustur, islemleri_coz, seans_kapanislari, seans_tablosu
+# Bölünme ve bedelsiz sermaye artırımı testleri için.
+from portfoy_analiz import bolunmeleri_ayikla
 
 
 def islem(date, tip, quantity, price, ticker="THYAO.IS"):
@@ -532,6 +534,27 @@ class PiyasaYardimcilariTestleri(unittest.TestCase):
 
     def test_veri_yoksa_bos_doner(self):
         self.assertIsNone(gun_ozeti(pd.DataFrame(), pd.DataFrame(), pd.Timestamp("2026-11-12"))["acilis"])
+
+
+# yfinance indirmesinden bölünmelerin ayıklanması.
+class BolunmeTestleri(unittest.TestCase):
+    def indirme(self):
+        gunler = pd.to_datetime(["2026-05-13", "2026-05-14", "2026-05-15"])
+        kolonlar = pd.MultiIndex.from_product([["Close", "Stock Splits"], ["BIMAS.IS", "THYAO.IS"]], names=["Price", "Ticker"])
+        return pd.DataFrame(
+            [[406.5, 300.0, 0.0, 0.0], [414.0, 301.0, 2.0, 0.0], [405.25, float("nan"), 0.0, 0.0]],
+            index=gunler, columns=kolonlar,
+        )
+
+    def test_yalnizca_bolunme_gunleri_oran_ve_kapanisla_doner(self):
+        self.assertEqual(
+            bolunmeleri_ayikla(self.indirme(), ["BIMAS", "THYAO", "YOK"]),
+            {"BIMAS": [{"tarih": "2026-05-14", "oran": 2.0, "kapanis": 414.0}]},
+        )
+
+    def test_bos_veya_bolunme_kolonu_olmayan_indirme(self):
+        self.assertEqual(bolunmeleri_ayikla(pd.DataFrame(), ["BIMAS"]), {})
+        self.assertEqual(bolunmeleri_ayikla(self.indirme()[["Close"]], ["BIMAS"]), {})
 
 
 if __name__ == "__main__":

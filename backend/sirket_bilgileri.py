@@ -81,11 +81,12 @@ EK_HISSE_SINIRI = 20
 EK_SEMBOL = re.compile(r"^[A-Z0-9]{2,10}$")
 
 
-def ek_sembolleri_ayikla(metin: str, endeks: list[str]) -> list[str]:
+# Bölünme sorgusu bütün işlem geçmişini sorduğu için sınır dışarıdan verilebilir.
+def ek_sembolleri_ayikla(metin: str, endeks: list[str], sinir: int = EK_HISSE_SINIRI) -> list[str]:
     """Virgülle ayrılmış sembollerden geçerli olanları, endekste olmayanları tekrarsız ve sıralı olarak döner."""
     endeks_kumesi = set(endeks)
     semboller = {s.strip().upper() for s in metin.split(",")}
-    return sorted(s for s in semboller if EK_SEMBOL.match(s) and s not in endeks_kumesi)[:EK_HISSE_SINIRI]
+    return sorted(s for s in semboller if EK_SEMBOL.match(s) and s not in endeks_kumesi)[:sinir]
 
 
 def sayfa_indir(adres: str) -> str:

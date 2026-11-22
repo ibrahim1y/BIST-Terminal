@@ -10,7 +10,9 @@ Borsa İstanbul hisselerini izlemek ve sanal alım-satım yapmak için bir web u
 - Hisse özeti, piyasa genişliği, en çok yükselen ve düşen hisseler
 - Endeks, döviz ve altın şeridi
 - Sanal alım-satım ve ağırlıklı ortalama maliyet
-- Portföy özeti, açık ve gerçekleşen kâr/zarar, dağılım grafiği
+- Portföy özeti, 1G'den 5Y'ye dönem kâr/zararı, dağılım grafiği
+- Bölünme ve bedelsiz sermaye artırımlarında eski işlemlerin otomatik düzeltilmesi
+- Endeksten çıkan ama portföyde duran hisselerin fiyatlarının güncel tutulması
 - Portföy grafiği: toplam kâr/zarar ve portföy değeri görünümleri
 - Nakit bakiye ve simülasyon amaçlı para yatırma
 - İşlem geçmişi ve nakit hareketleri
@@ -74,9 +76,9 @@ Uygulamayı [http://localhost:5173](http://localhost:5173) adresinden açın. Ba
 npm test
 ```
 
-Testler al/sat, kâr/zarar ve bakiye hesaplarını kapsar.
+Testler al/sat, kâr/zarar, bakiye, bölünme düzeltmesi ve teknik gösterge hesaplarını kapsar.
 
-Portföy analizi testleri için `backend` klasöründe:
+Portföy analizi, şirket listesi ve endeks testleri için `backend` klasöründe:
 
 ```bash
 python -m unittest
@@ -87,6 +89,8 @@ python -m unittest
 | Uç | Açıklama |
 |---|---|
 | `GET /api/hisseler` | Hisse listesi: fiyat, günlük değişim, gün özeti, hacim, mini grafik verisi, şirket adı ve sektör (30 saniye önbellekli) |
+| `GET /api/hisseler/ek` | Endekste olmayan hisseler için aynı bilgiler. `semboller` parametresi virgülle ayrılır, en fazla 20 hisse |
+| `GET /api/bolunmeler` | Hisselerin son 5 yıldaki bölünme ve bedelsiz sermaye artırımları: tarih, oran ve o günkü kapanış (6 saat önbellekli) |
 | `GET /api/gostergeler` | BIST 100, BIST 30, BIST Banka, Dolar/TL, Euro/TL ve ons altın (30 saniye önbellekli) |
 | `GET /api/grafik/{sembol}` | Hissenin mum verisi. `donem` parametresi: `1g`, `1h`, `1a`, `3a`, `1y`, `5y` (varsayılan `3a`) |
 | `POST /api/portfoy-analiz` | İşlem geçmişinden ağırlıklı ortalama maliyet, açık ve gerçekleşen kâr ile günlük zaman serisi |
@@ -97,6 +101,7 @@ python -m unittest
 
 - Fiyatlar Yahoo Finance'ten alınır ve gecikmeli olabilir.
 - Şirket adları ve sektörler `backend/sirketler.json` dosyasındadır. Listeye yeni hisse eklenince adı İş Yatırım'dan, sektörü KAP'tan açılışta ve günde bir otomatik tamamlanır. BIST 100 endeksinin üyeleri de KAP'tan günde bir alınıp `backend/bist100.json` dosyasına yazılır; endeks değişince liste kendiliğinden güncellenir.
+- Bir hisse bölünür veya bedelsiz sermaye artırımı yaparsa bundan önceki işlemlerin lotu oranla çarpılır, fiyatı bölünür. Küsurat lot o günün kapanışından nakde çevrilir. Düzeltilen kayıtlar işlem geçmişinde işaretlenir.
 - Portföy, işlem geçmişi, nakit hareketleri ve son fiyatlar yalnızca tarayıcının `localStorage` alanında tutulur. Tarayıcı verileri silinirse bunlar da silinir.
 - Para yatırma simülasyondur, gerçek para kullanılmaz.
 - Bu proje yatırım tavsiyesi vermez.

@@ -167,6 +167,11 @@ class EkSembolTestleri(unittest.TestCase):
         metin = ",".join(f"HS{i:03d}" for i in range(50))
         self.assertEqual(len(ek_sembolleri_ayikla(metin, [])), EK_HISSE_SINIRI)
 
+    # Bölünme sorgusu daha yüksek bir sınırla çağrılır.
+    def test_sinir_disaridan_verilebilir(self):
+        metin = ",".join(f"HS{i:03d}" for i in range(50))
+        self.assertEqual(len(ek_sembolleri_ayikla(metin, [], 40)), 40)
+
 
 if __name__ == "__main__":
     unittest.main()
